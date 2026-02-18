@@ -1,0 +1,115 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+body {
+	font-family: monospace;
+	background-color: black;
+	color: white;
+	font-size: 9pt;
+	margin-left: 30px;
+}
+
+h1 {
+	font-size: 35pt;
+	display: flex;
+	gap: 0.5ex;
+	align-items: center;
+	margin-top: 30px;
+	margin-bottom: 0.2em;
+}
+
+.spinner {
+	width: auto;
+	height: 1.2em;
+	color: grey;
+}
+
+#info {
+	margin: 1em 0;
+	width: 64em;
+
+	details, summary { display: inline }
+	details summary::before { content: "Show info" }
+	details[open] summary::before { content: "Hide info" }
+	details[open]::details-content { margin-top: 0.5em }
+}
+
+#data {
+	width: 64em;
+	display: flex;
+	flex-direction: column;
+}
+
+#progress {
+	width: 100%;
+	appearance: none;
+	border: 2px solid white;
+	background-color: black;
+	height: 1.5em;
+	box-sizing: border-box;
+
+	&::-webkit-progress-bar { background-color: black }
+	&::-moz-progress-bar { background-color: white }
+	&::-webkit-progress-value { background-color: white }
+}
+
+#log {
+	padding: 4px;
+	list-style: none;
+	margin: 0;
+	border-width: 0px 2px 2px 2px;
+	border-style: solid;
+	word-break: break-word;
+	padding-left: 3.1ex;
+	text-indent: -3.1ex;
+
+	li {
+		color: darkgray;
+		&:last-child { color: white }
+	}
+}
+
+li:before {
+  content: ">";
+  padding: 0 1ex;
+}
+
+.attribution {
+	color: gray;
+	font-style: italic;
+}
+
+a:link, summary {
+	color: unset;
+	text-decoration: underline;
+	cursor: pointer;
+
+	&:hover { filter: brightness(0.75) }
+}
+
+a:visited { color: unset; }
+
+body.started {
+	.spinner {
+		color: yellow;
+		animation: 0.25s linear spin infinite;
+	}
+}
+
+body.error {
+	.spinner {
+		color: sienna;
+		animation: none;
+	}
+}
+
+body.done {
+	.spinner {
+		color: green;
+		animation: none;
+	}
+	#mask { display: none }
+}
+
+@keyframes spin {
+	0% { transform: rotate(0deg) }
+	100% { transform: rotate(360deg) }
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Checking if you're a bot...</title>
+		<link rel="stylesheet" href="shapow_internal/challenge.css">
+	</head>
+	<body>
+		<h1>
+			<svg class="spinner" width="10" height="10" viewBox="-0.5 -0.5 11 11" version="1.1" xmlns="http://www.w3.org/2000/svg">
+				<defs>
+					<mask id="mask">
+						<path fill="white" d="M 0,0 V 2 L 5,4.5 10,2 V 0 Z M 5,5.5 0,8 v 2 H 10 V 8" />
+					</mask>
+				</defs>
+				<path mask="url(#mask)"
+					fill="currentColor"
+					d="M 5 0 A 5 5 0 0 0 0 5 A 5 5 0 0 0 5 10 A 5 5 0 0 0 10 5 A 5 5 0 0 0 5 0 z M 5 2 A 3 3 0 0 1 8 5 A 3 3 0 0 1 5 8 A 3 3 0 0 1 2 5 A 3 3 0 0 1 5 2 z " />
+			</svg>
+			Checking if you're a bot
+		</h1>
+
+		<div id="info">
+			The process is entirely automatic. If you encounter issues, contact <a href="mailto:botnet@zajc.tel">botnet@zajc.tel</a>.
+			<details>
+				<summary></summary>
+				<p>This page expends some computational power to solve a generated challenge. This does not benefit anyone, but it
+				does keep unwanted bots out - the process is fast for individual users, but very slow in bulk. Your IP address is
+				whitelisted once the process concludes to avoid additional interruptions.</p>
+
+				<p>JavaScript is unfortunately required for this. If you'd like, you can view the source here:
+				<a href="shapow_internal/challenge.js"target="_blank" >challenge.js</a>,
+				<a href="shapow_internal/challenge-worker.js" target="_blank">challenge-worker.js</a>,
+				<a href="shapow_internal/challenge-settings.js" target="_blank">challenge-settings.js (generated)</a>.
+				You can also view the
+				<a href="https://git.zajc.tel/libnginx-mod-http-shapow.git" target="_blank">full source of the project</a></p>
+
+				<p>The progress bar is only an estimate. If it gets stuck, wait longer or try reloading.</p>
+			</details>
+		</div>
+
+		<div id="data">
+			<progress id="progress" max="1" value="0"></progress>
+			<ul id="log">
+				<li>The script hasn't started, please make sure JavaScript is enabled.</li>
+			</ul>
+		</div>
+
+		<p class="attribution">
+			Source: <a href="https://git.zajc.tel/libnginx-mod-http-shapow.git" target="_blank">libnginx-mod-http-shapow</a>
+		</p>
+
+		<script src="shapow_internal/challenge-settings.js"></script>
+		<script src="shapow_internal/challenge.js"></script>
+	</body>
+</html>

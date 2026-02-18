@@ -1,0 +1,17 @@
+# eclipse files
+/Debug/
+/.settings/
+/.cproject
+/.project
+/compile_commands.json
+
+# dpkg-buildpackage
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/libnginx-mod-http-shapow.postinst.debhelper
+/debian/libnginx-mod-http-shapow.postrm.debhelper
+/debian/libnginx-mod-http-shapow.prerm.debhelper
+/debian/libnginx-mod-http-shapow.substvars
+/debian/libnginx-mod-http-shapow/
+/obj-x86_64-linux-gnu/

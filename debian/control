@@ -1,0 +1,26 @@
+Source: libnginx-mod-http-shapow
+Section: httpd
+Priority: optional
+Maintainer: Marko Zajc <marko@zajc.tel>
+Build-Depends: debhelper-compat (= 13),
+               dh-sequence-nginx,
+Standards-Version: 4.7.2
+Homepage: https://git.zajc.tel/libnginx-mod-http-shapow.git/about
+Vcs-Git: https://git.zajc.tel/libnginx-mod-http-shapow.git
+Vcs-Browser: https://git.zajc.tel/libnginx-mod-http-shapow.git
+
+Package: libnginx-mod-http-shapow
+Architecture: any
+Multi-Arch: foreign
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+Recommends: nginx,
+Description: Keep bots out with a proof-of-work challenge
+ SHAPOW presents an automated CAPTCHA page where configured. Real browsers burn
+ some processing power bruteforcing a computational challenge, while bots are
+ dissuaded from proceeding due to costs of performing this in bulk. The
+ difficulty (i.e. approximate amount of CPU time required) can also be
+ configured.
+ .
+ After completing the challenge, visitors are whitelisted by their IP address,
+ optionally also limited by duration and/or visit count.

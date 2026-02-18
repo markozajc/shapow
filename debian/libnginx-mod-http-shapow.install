@@ -1,0 +1,4 @@
+resources/challenge.css /usr/share/libnginx-mod-http-shapow/
+resources/challenge.html /usr/share/libnginx-mod-http-shapow/
+resources/challenge.js /usr/share/libnginx-mod-http-shapow/
+resources/challenge-worker.js /usr/share/libnginx-mod-http-shapow/

@@ -1,0 +1,5 @@
+libnginx-mod-http-shapow (1) experimental; urgency=medium
+
+  * Initial release.
+
+ -- Marko Zajc <marko@zajc.tel>  Wed, 18 Feb 2026 16:18:59 +0100
