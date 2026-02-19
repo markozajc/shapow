@@ -32,6 +32,10 @@ typedef enum {
 /* ===================================================
  * preprocessor and struct definitions
  =================================================== */
+#if !defined(NGX_HTTP_SHAPOW_ENABLE_IPV4) && !defined(NGX_HTTP_SHAPOW_ENABLE_IPV6)
+#error One or both of NGX_HTTP_SHAPOW_ENABLE_IPV4 and NGX_HTTP_SHAPOW_ENABLE_IPV6 must be defined
+#endif
+
 #define NGX_HTTP_SHAPOW_STR_HELPER(x) #x
 #define NGX_HTTP_SHAPOW_STR(x) NGX_HTTP_SHAPOW_STR_HELPER(x)
 #define NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT \
@@ -95,27 +99,35 @@ typedef struct {
 #endif
 } ngx_http_shapow_node_t;
 
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 struct ngx_http_shapow_node4_s {
 	ngx_http_shapow_node_t data;
 	struct ngx_http_shapow_node4_s *next;
 	struct in_addr addr;
 };
 typedef struct ngx_http_shapow_node4_s ngx_http_shapow_node4_t;
+#endif
 
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 struct ngx_http_shapow_node6_s {
 	ngx_http_shapow_node_t data;
 	struct ngx_http_shapow_node6_s *next;
 	struct in6_addr addr;
 };
 typedef struct ngx_http_shapow_node6_s ngx_http_shapow_node6_t;
+#endif
 
 typedef struct {
 	ngx_uint_t next_ordinal;
 	ngx_uint_t last_prune_ordinal;
 
-	// keep one table for each address family. the alternative (storing address family in the node) seems less efficient
+// keep one table for each address family. the alternative (storing address family in the node) seems less efficient
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	ngx_http_shapow_node4_t **table4;
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 	ngx_http_shapow_node6_t **table6;
+#endif
 } ngx_http_shapow_shctx_t;
 
 typedef struct {
@@ -499,8 +511,12 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 			ctx->sh->last_prune_ordinal = 0;
 			ngx_shmtx_lock(&ctx->shpool->mutex);
 			for (size_t bucket = 0; bucket < octx->bucket_count; ++bucket) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node4_t, ctx->shpool, ctx->sh->table4[bucket]);
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node6_t, ctx->shpool, ctx->sh->table6[bucket]);
+#endif
 			}
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 		}
@@ -521,13 +537,17 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	ctx->shpool->data = ctx->sh;
 
 	// initialize hashtables
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	ctx->sh->table4 = ngx_slab_calloc(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node4_t*));
 	if (ctx->sh->table4 == NULL)
 		return NGX_ERROR;
+#endif
 
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 	ctx->sh->table6 = ngx_slab_calloc(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node6_t*));
 	if (ctx->sh->table6 == NULL)
 		return NGX_ERROR;
+#endif
 
 	// initialize random variables
 	if (getrandom((char*) &ctx->random_challenge, sizeof(ctx->random_challenge), 0) != sizeof(ctx->random_challenge)) {
@@ -762,6 +782,7 @@ static ngx_uint_t ngx_http_shapow_get_address_bucket_id(const ngx_http_shapow_ct
 
 static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_shapow_ctx_t *ctx, ngx_uint_t bucket_id,
 															  const struct sockaddr *sa) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	if (sa->sa_family == AF_INET) {
 		const struct sockaddr_in *sa_in = (const struct sockaddr_in*) sa;
 
@@ -770,8 +791,11 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 			node = node->next;
 
 		return &node->data; // @suppress("Returning the address of a local variable")
+	}
+#endif
 
-	} else if (sa->sa_family == AF_INET6) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
+	if (sa->sa_family == AF_INET6) {
 		const struct sockaddr_in6 *sa_in6 = (const struct sockaddr_in6*) sa;
 
 		ngx_http_shapow_node6_t *node = ctx->sh->table6[bucket_id];
@@ -779,10 +803,10 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 			node = node->next;
 
 		return &node->data; // @suppress("Returning the address of a local variable")
-
-	} else {
-		return NULL;
 	}
+#endif
+
+	return NULL;
 }
 
 static void ngx_http_shapow_prune_old_whitelists(ngx_http_shapow_ctx_t *ctx) {
@@ -791,10 +815,14 @@ static void ngx_http_shapow_prune_old_whitelists(ngx_http_shapow_ctx_t *ctx) {
 	ctx->sh->last_prune_ordinal = prune_below;
 
 	for (size_t bucket_id = 0; bucket_id < ctx->bucket_count; ++bucket_id) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		ngx_http_shapow_prune_old_whitelists_for_bucket(ngx_http_shapow_node4_t, ctx->shpool,
 				ctx->sh->table4[bucket_id])
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 		ngx_http_shapow_prune_old_whitelists_for_bucket(ngx_http_shapow_node6_t, ctx->shpool,
 				ctx->sh->table6[bucket_id])
+#endif
 	}
 }
 
@@ -806,16 +834,21 @@ static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, con
 	ngx_http_shapow_node_t *data = ngx_http_shapow_lookup_address(ctx, bucket_id, sa);
 
 	if (data == NULL) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		if (sa->sa_family == AF_INET) {
 			const struct sockaddr_in *sa_in = (const struct sockaddr_in*) sa;
 			ngx_http_shapow_upsert_address_for_family(data, ngx_http_shapow_node4_t, ctx, sa_in->sin_addr,
 					ctx->sh->table4[bucket_id]);
+		}
+#endif
 
-		} else {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
+		if (sa->sa_family == AF_INET6) {
 			const struct sockaddr_in6 *sa_in6 = (const struct sockaddr_in6*) sa;
 			ngx_http_shapow_upsert_address_for_family(data, ngx_http_shapow_node6_t, ctx, sa_in6->sin6_addr,
 					ctx->sh->table6[bucket_id]);
 		}
+#endif
 	}
 
 	if (data == NULL) {
@@ -836,12 +869,24 @@ static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, con
 	return NGX_OK;
 }
 
+static bool ngx_http_shapow_addr_family_supported(sa_family_t sa_family) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
+	if (sa_family == AF_INET)
+		return true;
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
+	if (sa_family == AF_INET6)
+		return true;
+#endif
+	return false;
+}
+
 static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, const ngx_http_shapow_loc_conf_t *conf,
 														ngx_http_shapow_ctx_t *ctx) {
 	const struct sockaddr *sa = r->connection->sockaddr;
 
 	// allow non-INET addresses
-	if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6)
+	if (!ngx_http_shapow_addr_family_supported(sa->sa_family))
 		return NGX_DECLINED;
 
 	// check if response has a valid challenge response

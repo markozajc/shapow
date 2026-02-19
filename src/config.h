@@ -44,3 +44,9 @@
 // directives.
 #define NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 #define NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
+
+// Similarly, you can disable support for protocols you don't need. This reclaims some memory, depending on your
+// configured bucket count. Requests from disabled protocols will never be served a challenge, but can still access
+// internal resources (/shapow_internal/*)
+#define NGX_HTTP_SHAPOW_ENABLE_IPV4
+#define NGX_HTTP_SHAPOW_ENABLE_IPV6
