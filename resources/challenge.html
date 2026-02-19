@@ -2,6 +2,16 @@
 <html>
 	<head>
 		<title>Checking if you're a bot...</title>
+		<script>
+			(function() {
+				const url = window.location.pathname;
+				if (!url.endsWith("/")) {
+					const base = document.createElement("base");
+					base.href = url + "/";
+					document.head.prepend(base);
+				}
+			})();
+		</script>
 		<link rel="stylesheet" href="shapow_internal/challenge.css">
 	</head>
 	<body>
