@@ -1010,7 +1010,10 @@ static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 		return ngx_http_next_header_filter(r);
 
 	static const ngx_str_t header_csp_key = ngx_string("Content-Security-Policy");
-	static const ngx_str_t header_csp_value = ngx_string("default-src 'self'");
+	static const ngx_str_t header_csp_value =
+					ngx_string(
+							"default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-n5/yu3Prbxz0iuaChj1dnMv0BD7zul2ThC5fOj9FuTo='")
+	;
 
 	ngx_list_part_t *part = &r->headers_out.headers.part;
 	ngx_table_elt_t *header = part->elts;

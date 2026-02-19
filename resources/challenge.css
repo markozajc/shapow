@@ -16,6 +16,16 @@ h1 {
 	margin-bottom: 0.2em;
 }
 
+a:link, summary {
+	color: inherit;
+	text-decoration: underline;
+	cursor: pointer;
+
+	&:hover { filter: brightness(0.75) }
+}
+
+a:visited { color: inherit; }
+
 .spinner {
 	width: auto;
 	height: 1.2em;
@@ -76,16 +86,6 @@ li:before {
 	color: gray;
 	font-style: italic;
 }
-
-a:link, summary {
-	color: unset;
-	text-decoration: underline;
-	cursor: pointer;
-
-	&:hover { filter: brightness(0.75) }
-}
-
-a:visited { color: unset; }
 
 body.started {
 	.spinner {
