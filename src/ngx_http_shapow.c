@@ -1050,7 +1050,7 @@ static ngx_int_t ngx_http_shapow(ngx_conf_t *cf) {
 	ngx_http_next_header_filter = ngx_http_top_header_filter;
 	ngx_http_top_header_filter = ngx_http_shapow_header_filter;
 
-	ngx_http_handler_pt *h = ngx_array_push(&main_conf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
+	ngx_http_handler_pt *h = ngx_array_push(&main_conf->phases[NGX_HTTP_REWRITE_PHASE].handlers);
 	if (h == NULL)
 		return NGX_ERROR;
 
