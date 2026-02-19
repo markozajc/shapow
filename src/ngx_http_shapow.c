@@ -191,6 +191,8 @@ static ngx_uint_t ngx_http_shapow_pass_index;
 static const ngx_str_t ngx_http_shapow_pass_data_yes = ngx_string("PASS");
 static const ngx_str_t ngx_http_shapow_pass_data_no = ngx_string("LIMIT");
 
+static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
+
 //@formatter:off
 static ngx_command_t ngx_http_shapow_commands[] = {
 	{
@@ -480,7 +482,6 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 }
 
 static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
-	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shmem: run init"); // TODO remove log
 	ngx_http_shapow_ctx_t *ctx = shm_zone->data;
 
 	// try reusing old data from reload
@@ -491,12 +492,10 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 		ctx->shpool = octx->shpool;
 
 		if (octx->bucket_count == ctx->bucket_count) {
-			ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shmem: reuse"); // TODO remove log
 			ctx->hash_seed = octx->hash_seed;
 			return NGX_OK;
 
 		} else {
-			ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shmem: destroy"); // TODO remove log
 			ctx->sh->next_ordinal = 0;
 			ctx->sh->last_prune_ordinal = 0;
 			ngx_shmtx_lock(&ctx->shpool->mutex);
@@ -512,12 +511,9 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 
 	if (shm_zone->shm.exists) {
 		// already initialized (apparently this can happen on Windows? leaving for posterity)
-		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shmem: exists"); // TODO remove log
 		ctx->sh = ctx->shpool->data;
 		return NGX_OK;
 	}
-
-	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shmem: initialize"); // TODO remove log
 
 	// initialize the shared zone
 	ctx->sh = ngx_slab_alloc(ctx->shpool, sizeof(ngx_http_shapow_shctx_t));
@@ -728,7 +724,6 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 		return true; // not checking at all for non-INET addresses
 
 	// check response time
-
 	// I'm not sure how/when nginx's time cache is updated, but it's probably not safe to assume it's the same for all
 	// workers, so I'm allowing the possibility that resp_time is higher than ngx_time()
 	time_t resp_time = be64toh(*((time_t* ) (data + sizeof(struct in6_addr))));
@@ -849,10 +844,8 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 	// check if response has a valid challenge response
 	u_char *challenge_response = ngx_http_shapow_find_challenge_response(&r->args);
 	if (challenge_response) {
-		// TODO
-		ngx_http_shapow_check_challenge_response(r, ctx, conf, challenge_response);
-//		if (!ngx_http_shapow_check_challenge_response(r, ctx, conf, challenge_response))
-//			return NGX_OK;
+		if (!ngx_http_shapow_check_challenge_response(r, ctx, conf, challenge_response))
+			return NGX_OK;
 
 //		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "whitelist upsert"); // TODO remove log
 		if (ngx_http_shapow_upsert_address(r, conf, ctx, sa) == NGX_ERROR)
@@ -930,7 +923,6 @@ static ngx_int_t ngx_http_shapow_handler(ngx_http_request_t *r) { // NOSONAR
 	// way to persist data between these requests
 	ngx_variable_value_t *pass_var = &r->variables[ngx_http_shapow_pass_index];
 	if (pass_var->data == ngx_http_shapow_pass_data_yes.data) {
-//		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "fast decline"); // TODO remove log
 		return NGX_DECLINED;
 
 	} else {
@@ -1012,11 +1004,52 @@ static ngx_int_t ngx_http_shapow_add_variables(ngx_conf_t *cf) {
 	return NGX_OK;
 }
 
+static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
+	const ngx_variable_value_t *pass_var = &r->variables[ngx_http_shapow_pass_index];
+	if (pass_var == NULL || pass_var->data != ngx_http_shapow_pass_data_no.data)
+		return ngx_http_next_header_filter(r);
+
+	static const ngx_str_t header_csp_key = ngx_string("Content-Security-Policy");
+	static const ngx_str_t header_csp_value = ngx_string("default-src 'self'");
+
+	ngx_list_part_t *part = &r->headers_out.headers.part;
+	ngx_table_elt_t *header = part->elts;
+
+	ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "headers:");
+	for (ngx_uint_t i = 0;; ++i) {
+		if (i >= part->nelts) {
+			if (part->next == NULL)
+				break;
+
+			part = part->next;
+			header = part->elts;
+
+			i = 0;
+		}
+
+		ngx_str_t *key = &header[i].key;
+		if (key->len == header_csp_key.len && ngx_strncasecmp(key->data, header_csp_key.data, key->len) == 0)
+			header[i].hash = 0;
+
+		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "%V: %V", &header[i].key, &header[i].value);
+	}
+
+	header = ngx_list_push(&r->headers_out.headers);
+	if (header == NULL)
+		return NGX_ERROR;
+	header->hash = 1;
+	header->key = header_csp_key;
+	header->value = header_csp_value;
+
+	return ngx_http_next_header_filter(r);
+}
+
 static ngx_int_t ngx_http_shapow(ngx_conf_t *cf) {
 	ngx_http_core_main_conf_t *main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
-	// TODO maybe NGX_HTTP_PREACCESS_PHASE?
-	ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "register %i", (ngx_int_t ) getpid()); // TODO remove log
+	ngx_http_next_header_filter = ngx_http_top_header_filter;
+	ngx_http_top_header_filter = ngx_http_shapow_header_filter;
+
 	ngx_http_handler_pt *h = ngx_array_push(&main_conf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
 	if (h == NULL)
 		return NGX_ERROR;
