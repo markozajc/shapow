@@ -788,7 +788,7 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 
 static void ngx_http_shapow_prune_old_whitelists(ngx_http_shapow_ctx_t *ctx) {
 	ngx_uint_t prune_below = ctx->sh->last_prune_ordinal + (ctx->sh->next_ordinal - ctx->sh->last_prune_ordinal) / 2;
-	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "prune below %ui", prune_below); // TODO remove log
+	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "prune below %ui at %ui", prune_below, ctx->sh->next_ordinal); // TODO remove log
 	ctx->sh->last_prune_ordinal = prune_below;
 
 	for (size_t bucket_id = 0; bucket_id < ctx->bucket_count; ++bucket_id) {
@@ -1010,10 +1010,10 @@ static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 		return ngx_http_next_header_filter(r);
 
 	static const ngx_str_t header_csp_key = ngx_string("Content-Security-Policy");
-	static const ngx_str_t header_csp_value =
-					ngx_string(
-							"default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-n5/yu3Prbxz0iuaChj1dnMv0BD7zul2ThC5fOj9FuTo='")
-	;
+	static const ngx_str_t header_csp_value = ngx_string(
+			"default-src 'self';"
+			"script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-n5/yu3Prbxz0iuaChj1dnMv0BD7zul2ThC5fOj9FuTo='");
+	// the hash corresponds to the inline script in challenge.html's <head>
 
 	ngx_list_part_t *part = &r->headers_out.headers.part;
 	ngx_table_elt_t *header = part->elts;

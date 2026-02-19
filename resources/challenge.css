@@ -4,17 +4,18 @@ body {
 	background-color: black;
 	color: white;
 	font-size: 9pt;
-	margin-left: 30px;
+	margin: 30px;
 }
 
 h1 {
-	font-size: 35pt;
+	font-size: 25pt;
 	display: flex;
 	gap: 0.5ex;
-	align-items: center;
-	margin-top: 30px;
 	margin-bottom: 0.2em;
+	align-items: start;
 }
+
+a:visited { color: inherit; }
 
 a:link, summary {
 	color: inherit;
@@ -24,17 +25,16 @@ a:link, summary {
 	&:hover { filter: brightness(0.75) }
 }
 
-a:visited { color: inherit; }
-
-.spinner {
+#spinner {
 	width: auto;
 	height: 1.2em;
 	color: grey;
+	flex-shrink: 0;
 }
 
 #info {
 	margin: 1em 0;
-	width: 64em;
+	max-width: 64em;
 
 	details, summary { display: inline }
 	details summary::before { content: "Show info" }
@@ -43,7 +43,7 @@ a:visited { color: inherit; }
 }
 
 #data {
-	width: 64em;
+	max-width: 64em;
 	display: flex;
 	flex-direction: column;
 }
@@ -88,21 +88,21 @@ li:before {
 }
 
 body.started {
-	.spinner {
+	#spinner {
 		color: yellow;
 		animation: 0.25s linear spin infinite;
 	}
 }
 
 body.error {
-	.spinner {
+	#spinner {
 		color: sienna;
 		animation: none;
 	}
 }
 
 body.done {
-	.spinner {
+	#spinner {
 		color: green;
 		animation: none;
 	}
@@ -112,4 +112,17 @@ body.done {
 @keyframes spin {
 	0% { transform: rotate(0deg) }
 	100% { transform: rotate(360deg) }
+}
+
+@media (width <= 600px) {
+	h1 { display: inline }
+
+	#spinner {
+		float: right;
+		padding-left: 0.5ex;
+	}
+}
+
+@media (width <= 350px) {
+	body { margin: 10px }
 }
