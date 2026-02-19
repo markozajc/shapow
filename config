@@ -5,6 +5,7 @@ SHAPOW_SRCS="                                                               \
         "
 
 SHAPOW_DEPS="                                                               \
+        $ngx_addon_dir/src/config.h                                         \
         "
 
 if [ -n "$ngx_module_link" ]; then

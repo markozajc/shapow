@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: AGPL-3.0-only
 /*
  * libnginx-mod-http-shapow - proof-of-work captcha module for nginx
- * Copyright (C) 2025 Marko Zajc
+ * Copyright (C) 2026 Marko Zajc
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#include "config.h"
 #include <ngx_http.h>
 #include <endian.h> // TODO nonportable?
 #include <sys/random.h> // TODO nonportable
@@ -27,28 +28,6 @@ typedef enum {
 	false = 0
 } bool;
 #endif
-
-// Default root for resource files that are read into memory on module startup.
-#define NGX_HTTP_SHAPOW_RESOURCE_ROOT "/usr/share/libnginx-mod-http-shapow"
-
-// Paths to serve resources on.
-#define NGX_HTTP_SHAPOW_URI_ROOT "/shapow_internal"
-#define NGX_HTTP_SHAPOW_URI_CHALL_CSS NGX_HTTP_SHAPOW_URI_ROOT "/challenge.css"
-#define NGX_HTTP_SHAPOW_URI_CHALL_JS NGX_HTTP_SHAPOW_URI_ROOT "/challenge.js"
-#define NGX_HTTP_SHAPOW_URI_CHALL_WORKER NGX_HTTP_SHAPOW_URI_ROOT "/challenge-worker.js"
-#define NGX_HTTP_SHAPOW_URI_CHALL_SETTINGS NGX_HTTP_SHAPOW_URI_ROOT "/challenge-settings.js"
-
-// Length (in bytes) of the nonce (= the challenge solution). Going too low can result in unsolvable challenges, which
-// the clientside code is not programmed to support or detect.
-#define NGX_HTTP_SHAPOW_NONCE_LENGTH 16
-
-// Querystring argument used to return the challenge response. Make sure this doesn't conflict with your CGI/backend's
-// querystring parameters. Must be changed separately in challenge.js.
-#define NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG "shapow-response"
-
-// The validity duration of challenge responses. This is separate from whitelist duration, and should only accommodate
-// the time to solve and return the response.
-#define NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE 600 // 10 minutes
 
 /* ===================================================
  * preprocessor and struct definitions
@@ -108,8 +87,12 @@ typedef enum {
 
 typedef struct {
 	ngx_uint_t ordinal;
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	ngx_uint_t use_count; // doesn't get incremented if whitelist_count in conf is 0
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
 	time_t registration_time;
+#endif
 } ngx_http_shapow_node_t;
 
 struct ngx_http_shapow_node4_s {
@@ -152,8 +135,12 @@ typedef struct {
 	ngx_flag_t enabled;
 	ngx_str_t zone_name;
 	ngx_uint_t difficulty;
-	time_t whitelist_duration;
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	ngx_uint_t whitelist_count;
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
+	time_t whitelist_duration;
+#endif
 	ngx_str_t challenge_html_path;
 	ngx_str_t challenge_css_path;
 	ngx_str_t challenge_js_path;
@@ -227,14 +214,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 		offsetof(ngx_http_shapow_loc_conf_t, difficulty),
 		NULL
 	},
-	{
-		ngx_string("shapow_whitelist_duration"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-		ngx_conf_set_sec_slot,
-		NGX_HTTP_LOC_CONF_OFFSET,
-		offsetof(ngx_http_shapow_loc_conf_t, whitelist_duration),
-		NULL
-	},
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	{
 		ngx_string("shapow_whitelist_count"),
 		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
@@ -243,6 +223,17 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 		offsetof(ngx_http_shapow_loc_conf_t, whitelist_count),
 		NULL
 	},
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
+	{
+		ngx_string("shapow_whitelist_duration"),
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		ngx_conf_set_sec_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,
+		offsetof(ngx_http_shapow_loc_conf_t, whitelist_duration),
+		NULL
+	},
+#endif
 	{
 		ngx_string("shapow_challenge_html_path"),
 		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
@@ -394,8 +385,12 @@ static void* ngx_http_shapow_create_loc_conf(ngx_conf_t *cf) {
 
 	conf->enabled = NGX_CONF_UNSET;
 	conf->difficulty = NGX_CONF_UNSET_UINT;
-	conf->whitelist_duration = NGX_CONF_UNSET_UINT;
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	conf->whitelist_count = NGX_CONF_UNSET_UINT;
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
+	conf->whitelist_duration = NGX_CONF_UNSET;
+#endif
 
 	return conf;
 }
@@ -407,8 +402,12 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	ngx_conf_merge_value(conf->enabled, prev->enabled, 0)
 	ngx_conf_merge_str_value(conf->zone_name, prev->zone_name, "")
 	ngx_conf_merge_uint_value(conf->difficulty, prev->difficulty, 12)
-	ngx_conf_merge_sec_value(conf->whitelist_duration, prev->whitelist_duration, 0)
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	ngx_conf_merge_uint_value(conf->whitelist_count, prev->whitelist_count, 0)
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
+	ngx_conf_merge_sec_value(conf->whitelist_duration, prev->whitelist_duration, 0)
+#endif
 	ngx_conf_merge_str_value(conf->challenge_html_path, prev->challenge_html_path,
 			NGX_HTTP_SHAPOW_RESOURCE_ROOT "/challenge.html")
 	ngx_conf_merge_str_value(conf->challenge_css_path, prev->challenge_css_path,
@@ -826,8 +825,12 @@ static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, con
 	}
 
 	data->ordinal = ctx->sh->next_ordinal++;
-	data->registration_time = ngx_time();
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	data->use_count = 0;
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
+	data->registration_time = ngx_time();
+#endif
 
 	ngx_shmtx_unlock(&ctx->shpool->mutex);
 	return NGX_OK;
@@ -887,28 +890,28 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 
 		// node is not whitelisted
 		if (node == NULL) {
-//			ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "whitelist null"); // TODO remove log
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 			return NGX_OK;
 		}
 
-		// whitelist has expired (is older than whitelist_duration)
-		time_t duration = conf->whitelist_duration;
-		if (duration && (ngx_time() - node->registration_time) > duration) {
-			ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "whitelist expire time"); // TODO remove log
-			ngx_shmtx_unlock(&ctx->shpool->mutex);
-			return NGX_OK;
-		}
-
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 		// whitelist has expired (has more uses than whitelist_count)
 		ngx_uint_t count = conf->whitelist_count;
 		if (count && (node->use_count++ > count)) { // NOSONAR short-circuited increment is intentional
-			ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "whitelist expire count"); // TODO remove log
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 			return NGX_OK;
 		}
+#endif
 
-//		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "whitelist valid"); // TODO remove log
+#ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
+		// whitelist has expired (is older than whitelist_duration)
+		time_t duration = conf->whitelist_duration;
+		if (duration && (ngx_time() - node->registration_time) > duration) {
+			ngx_shmtx_unlock(&ctx->shpool->mutex);
+			return NGX_OK;
+		}
+#endif
+
 		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_DECLINED;
 	}
