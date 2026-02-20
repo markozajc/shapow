@@ -90,19 +90,19 @@ typedef enum {
 }
 
 typedef struct {
-	ngx_uint_t ordinal;
+	uint32_t ordinal;
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
-	ngx_uint_t use_count; // doesn't get incremented if whitelist_count in conf is 0
+	uint32_t use_count; // doesn't get incremented if whitelist_count in conf is 0
 #endif
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
-	time_t registration_time;
+	int32_t registration_time;
 #endif
 } ngx_http_shapow_node_t;
 
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 struct ngx_http_shapow_node4_s {
-	ngx_http_shapow_node_t data;
 	struct ngx_http_shapow_node4_s *next;
+	ngx_http_shapow_node_t data;
 	struct in_addr addr;
 };
 typedef struct ngx_http_shapow_node4_s ngx_http_shapow_node4_t;
@@ -110,16 +110,16 @@ typedef struct ngx_http_shapow_node4_s ngx_http_shapow_node4_t;
 
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 struct ngx_http_shapow_node6_s {
-	ngx_http_shapow_node_t data;
 	struct ngx_http_shapow_node6_s *next;
+	ngx_http_shapow_node_t data;
 	struct in6_addr addr;
 };
 typedef struct ngx_http_shapow_node6_s ngx_http_shapow_node6_t;
 #endif
 
 typedef struct {
-	ngx_uint_t next_ordinal;
-	ngx_uint_t last_prune_ordinal;
+	uint32_t next_ordinal;
+	uint32_t last_prune_ordinal;
 
 // keep one table for each address family. the alternative (storing address family in the node) seems less efficient
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
@@ -134,6 +134,7 @@ typedef struct {
 	ngx_slab_pool_t *shpool;
 	ngx_http_shapow_shctx_t *sh;
 	ngx_uint_t bucket_count;
+	time_t epoch;
 
 	// Part of the challenge is random to prevent generating solutions in advance. The random number is regenerated
 	// every time the module is reloaded.
@@ -499,6 +500,7 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	ngx_http_shapow_ctx_t *octx = data;
 	if (octx) {
 		ctx->random_challenge = octx->random_challenge;
+		ctx->epoch = octx->epoch;
 		ctx->sh = octx->sh;
 		ctx->shpool = octx->shpool;
 
@@ -549,7 +551,9 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 		return NGX_ERROR;
 #endif
 
-	// initialize random variables
+	// initialize misc variables
+	ctx->epoch = ngx_time();
+
 	if (getrandom((char*) &ctx->random_challenge, sizeof(ctx->random_challenge), 0) != sizeof(ctx->random_challenge)) {
 		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shapow: failed to generate random bytes");
 		return NGX_ERROR;
@@ -790,6 +794,9 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 		while (node != NULL && ngx_memcmp(&node->addr, &sa_in->sin_addr, sizeof(node->addr)) != 0)
 			node = node->next;
 
+		if (node == NULL)
+			return NULL;
+
 		return &node->data; // @suppress("Returning the address of a local variable")
 	}
 #endif
@@ -802,6 +809,9 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 		while (node != NULL && ngx_memcmp(&node->addr, &sa_in6->sin6_addr, sizeof(node->addr)) != 0)
 			node = node->next;
 
+		if (node == NULL)
+			return NULL;
+
 		return &node->data; // @suppress("Returning the address of a local variable")
 	}
 #endif
@@ -810,8 +820,13 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 }
 
 static void ngx_http_shapow_prune_old_whitelists(ngx_http_shapow_ctx_t *ctx) {
-	ngx_uint_t prune_below = ctx->sh->last_prune_ordinal + (ctx->sh->next_ordinal - ctx->sh->last_prune_ordinal) / 2;
-	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "prune below %ui at %ui", prune_below, ctx->sh->next_ordinal); // TODO remove log
+	uint32_t last_prune_ordinal = ctx->sh->last_prune_ordinal;
+
+	// if next_ordinal overflows, last_prune_ordinal will be higher than it
+	last_prune_ordinal = last_prune_ordinal <= ctx->sh->next_ordinal ? last_prune_ordinal : 0;
+
+	uint32_t prune_below = last_prune_ordinal + (ctx->sh->next_ordinal - last_prune_ordinal) / 2;
+
 	ctx->sh->last_prune_ordinal = prune_below;
 
 	for (size_t bucket_id = 0; bucket_id < ctx->bucket_count; ++bucket_id) {
@@ -849,20 +864,23 @@ static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, con
 					ctx->sh->table6[bucket_id]);
 		}
 #endif
+
+		if (data != NULL) {
+			data->ordinal = ctx->sh->next_ordinal++;
+
+		} else {
+			ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "shapow zone \"%V\" is not big enough",
+					&conf->zone_name);
+			ngx_shmtx_unlock(&ctx->shpool->mutex);
+			return NGX_ERROR;
+		}
 	}
 
-	if (data == NULL) {
-		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "shapow zone \"%V\" is not big enough", &conf->zone_name);
-		ngx_shmtx_unlock(&ctx->shpool->mutex);
-		return NGX_ERROR;
-	}
-
-	data->ordinal = ctx->sh->next_ordinal++;
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	data->use_count = 0;
 #endif
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
-	data->registration_time = ngx_time();
+	data->registration_time = (int32_t) (ngx_time() - ctx->epoch); // cast is safe, 2^31 seconds = 68 years
 #endif
 
 	ngx_shmtx_unlock(&ctx->shpool->mutex);
@@ -895,11 +913,8 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 		if (!ngx_http_shapow_check_challenge_response(r, ctx, conf, challenge_response))
 			return NGX_OK;
 
-//		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "whitelist upsert"); // TODO remove log
 		if (ngx_http_shapow_upsert_address(r, conf, ctx, sa) == NGX_ERROR)
 			return NGX_ERROR;
-
-//		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "old args: \"%V\"", &r->args); // TODO remove log
 
 		// remove challenge_response from the URL so it's not read by other modules/directives
 		u_char *resp_arg_start = challenge_response - sizeof(NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG);
@@ -923,18 +938,16 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 			r->args.len = leading_len + trailing_len - 1;
 		}
 
-//		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "new args: \"%V\"", &r->args); // TODO remove log
-
 		return NGX_DECLINED;
 
 	} else {
 		ngx_shmtx_lock(&ctx->shpool->mutex);
 		// locking a little wasteful, but it prevents a data race when freeing stale nodes
-		ngx_http_shapow_node_t *node = ngx_http_shapow_lookup_address(ctx,
+		ngx_http_shapow_node_t *data = ngx_http_shapow_lookup_address(ctx,
 				ngx_http_shapow_get_address_bucket_id(ctx, sa), sa);
 
 		// node is not whitelisted
-		if (node == NULL) {
+		if (data == NULL) {
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 			return NGX_OK;
 		}
@@ -942,7 +955,7 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 		// whitelist has expired (has more uses than whitelist_count)
 		ngx_uint_t count = conf->whitelist_count;
-		if (count && (node->use_count++ > count)) { // NOSONAR short-circuited increment is intentional
+		if (count && (data->use_count++ > count)) { // NOSONAR short-circuited increment is intentional
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 			return NGX_OK;
 		}
@@ -951,7 +964,7 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
 		// whitelist has expired (is older than whitelist_duration)
 		time_t duration = conf->whitelist_duration;
-		if (duration && (ngx_time() - node->registration_time) > duration) {
+		if (duration && (ngx_time() - ctx->epoch - data->registration_time) > duration) {
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 			return NGX_OK;
 		}
@@ -1066,7 +1079,6 @@ static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 	ngx_list_part_t *part = &r->headers_out.headers.part;
 	ngx_table_elt_t *header = part->elts;
 
-	ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "headers:");
 	for (ngx_uint_t i = 0;; ++i) {
 		if (i >= part->nelts) {
 			if (part->next == NULL)
@@ -1081,8 +1093,6 @@ static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 		ngx_str_t *key = &header[i].key;
 		if (key->len == header_csp_key.len && ngx_strncasecmp(key->data, header_csp_key.data, key->len) == 0)
 			header[i].hash = 0;
-
-		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "%V: %V", &header[i].key, &header[i].value);
 	}
 
 	header = ngx_list_push(&r->headers_out.headers);

@@ -40,7 +40,7 @@
 #define NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE 600 // 10 minutes
 
 // These two defines control the availability of the shapow_whitelist_count and shapow_whitelist_duration directives.
-// They incur some overhead on the whitelist data (8 bytes each), so disable them here if you don't use these
+// They incur some overhead on the whitelist data (4 bytes each), so disable them here if you don't use these
 // directives.
 #define NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 #define NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
