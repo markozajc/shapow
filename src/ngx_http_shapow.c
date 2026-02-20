@@ -205,7 +205,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_FLAG,
 		ngx_conf_set_flag_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, enabled),
@@ -213,7 +213,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_zone"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, zone_name),
@@ -221,7 +221,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_difficulty"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_num_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, difficulty),
@@ -230,7 +230,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	{
 		ngx_string("shapow_whitelist_count"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_num_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, whitelist_count),
@@ -240,7 +240,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
 	{
 		ngx_string("shapow_whitelist_duration"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_sec_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, whitelist_duration),
@@ -249,7 +249,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 #endif
 	{
 		ngx_string("shapow_challenge_html_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_html_path),
@@ -257,7 +257,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_challenge_css_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_css_path),
@@ -265,7 +265,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_challenge_js_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_js_path),
@@ -273,7 +273,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_challenge_worker_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_worker_path),
@@ -1111,7 +1111,7 @@ static ngx_int_t ngx_http_shapow(ngx_conf_t *cf) {
 	ngx_http_next_header_filter = ngx_http_top_header_filter;
 	ngx_http_top_header_filter = ngx_http_shapow_header_filter;
 
-	ngx_http_handler_pt *h = ngx_array_push(&main_conf->phases[NGX_HTTP_REWRITE_PHASE].handlers);
+	ngx_http_handler_pt *h = ngx_array_push(&main_conf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
 	if (h == NULL)
 		return NGX_ERROR;
 
