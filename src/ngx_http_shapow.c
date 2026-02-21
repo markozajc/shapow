@@ -58,12 +58,12 @@ typedef enum {
 	(BUCKET) = NULL; \
 }
 
-#define ngx_http_shapow_prune_old_whitelists_for_bucket(TYPE, SHPOOL, BUCKET) { \
+#define ngx_http_shapow_prune_old_whitelists_for_bucket(TYPE, SHPOOL, BUCKET, PRUNE_BELOW) { \
 	TYPE *node_prev = NULL; /* NOSONAR can't enclose type in parens */ \
 	TYPE *node = (BUCKET); /* NOSONAR can't enclose type in parens */ \
 	while (node != NULL) { \
 		TYPE *node_next = node->next; /* NOSONAR can't enclose type in parens */ \
-		if (node->data.ordinal < prune_below) { \
+		if (node->data.ordinal <= (PRUNE_BELOW)) { \
 			ngx_slab_free_locked((SHPOOL), node); \
 			if (node_prev == NULL) \
 				(BUCKET) = node_next; \
@@ -76,10 +76,10 @@ typedef enum {
 	} \
 }
 
-#define ngx_http_shapow_upsert_address_for_family(DATA, TYPE, CTX, ADDR, BUCKET) { \
+#define ngx_http_shapow_upsert_address_for_family(DATA, TYPE, CONF, CTX, ADDR, BUCKET) { \
 	TYPE *node = ngx_slab_alloc_locked((CTX)->shpool, sizeof(TYPE)); /* NOSONAR can't enclose type in parens */ \
 	if (node == NULL) { \
-		ngx_http_shapow_prune_old_whitelists(CTX); \
+		ngx_http_shapow_prune_old_whitelists((CONF), (CTX)); \
 		node = ngx_slab_alloc_locked((CTX)->shpool, sizeof(TYPE)); /* NOSONAR can't enclose type in parens */ \
 	} \
 	if (node != NULL) { \
@@ -829,24 +829,32 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 	return NULL;
 }
 
-static void ngx_http_shapow_prune_old_whitelists(ngx_http_shapow_ctx_t *ctx) {
-	uint32_t last_prune_ordinal = ctx->sh->last_prune_ordinal;
+static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_t *conf, ngx_http_shapow_ctx_t *ctx) {
+	uint32_t prune_below; // NOSONAR initialized right after
+	// overflows happen every 4 billion whitelist inserts (assuming we don't restart nginx in that time!), so more
+	// advanced handling logic isn't really necessary
+	if (ctx->sh->last_prune_ordinal <= ctx->sh->next_ordinal) {
+		// next_ordinal did not overflow
+		prune_below = ctx->sh->last_prune_ordinal + (ctx->sh->next_ordinal - ctx->sh->last_prune_ordinal) / 2;
+		ctx->sh->last_prune_ordinal = prune_below;
 
-	// if next_ordinal overflows, last_prune_ordinal will be higher than it
-	last_prune_ordinal = last_prune_ordinal <= ctx->sh->next_ordinal ? last_prune_ordinal : 0;
+	} else {
+		// next_ordinal did overflow
+		prune_below = -1; // prune all buckets
+		ctx->sh->last_prune_ordinal = 0;
+	}
 
-	uint32_t prune_below = last_prune_ordinal + (ctx->sh->next_ordinal - last_prune_ordinal) / 2;
-
-	ctx->sh->last_prune_ordinal = prune_below;
+	ngx_log_error(NGX_LOG_DEBUG, ngx_cycle->log, 0, "shapow zone %V: current node ordinal is %ui, pruning nodes <= %ui",
+			&conf->zone_name, (ngx_uint_t ) ctx->sh->next_ordinal, (ngx_uint_t ) prune_below);
 
 	for (size_t bucket_id = 0; bucket_id < ctx->bucket_count; ++bucket_id) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		ngx_http_shapow_prune_old_whitelists_for_bucket(ngx_http_shapow_node4_t, ctx->shpool,
-				ctx->sh->table4[bucket_id])
+				ctx->sh->table4[bucket_id], prune_below)
 #endif
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 		ngx_http_shapow_prune_old_whitelists_for_bucket(ngx_http_shapow_node6_t, ctx->shpool,
-				ctx->sh->table6[bucket_id])
+				ctx->sh->table6[bucket_id], prune_below)
 #endif
 	}
 }
@@ -862,7 +870,7 @@ static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, con
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		if (sa->sa_family == AF_INET) {
 			const struct sockaddr_in *sa_in = (const struct sockaddr_in*) sa;
-			ngx_http_shapow_upsert_address_for_family(data, ngx_http_shapow_node4_t, ctx, sa_in->sin_addr,
+			ngx_http_shapow_upsert_address_for_family(data, ngx_http_shapow_node4_t, conf, ctx, sa_in->sin_addr,
 					ctx->sh->table4[bucket_id]);
 		}
 #endif
@@ -870,7 +878,7 @@ static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, con
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 		if (sa->sa_family == AF_INET6) {
 			const struct sockaddr_in6 *sa_in6 = (const struct sockaddr_in6*) sa;
-			ngx_http_shapow_upsert_address_for_family(data, ngx_http_shapow_node6_t, ctx, sa_in6->sin6_addr,
+			ngx_http_shapow_upsert_address_for_family(data, ngx_http_shapow_node6_t, conf, ctx, sa_in6->sin6_addr,
 					ctx->sh->table6[bucket_id]);
 		}
 #endif
@@ -1087,7 +1095,7 @@ static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 	static const ngx_str_t header_csp_value = ngx_string(
 			"default-src 'self';"
 			"script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-5sBVMf3rpfzmovinEBS+zknIk18/JTKQhrIdGhsXVoA='");
-	// the hash corresponds to the inline script in challenge.html's <head>
+	// the hash corresponds to the inline <script> in challenge.html's <head>
 
 	ngx_list_part_t *part = &r->headers_out.headers.part;
 	ngx_table_elt_t *header = part->elts;
