@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail;
+version="$(head 'debian/changelog' | grep -Po '\(\K[^)]+')";
+file="shapow-$version.tar.xz";
+rm -f "$file";
+tar -cvf "$file" --transform='s#^#shapow/#' 'src/' 'resources/' 'README.md' 'screenshot.png' 'config';
+gpg -u 'marko@zajc.tel' --output "$file.sig" --detach-sig "$file";

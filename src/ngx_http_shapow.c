@@ -18,8 +18,8 @@
  */
 #include "config.h"
 #include <ngx_http.h>
-#include <endian.h> // TODO nonportable?
-#include <sys/random.h> // TODO nonportable
+#include <endian.h>
+#include <sys/random.h>
 #include <openssl/sha.h>
 
 #if __STDC_VERSION__ <= 201710
