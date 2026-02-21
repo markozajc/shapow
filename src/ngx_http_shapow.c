@@ -323,7 +323,7 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, ngx_str_t *name,
 
 	file.fd = ngx_open_file(file.name.data, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
 	if (file.fd == NGX_INVALID_FILE) {
-		ngx_conf_log_error(NGX_LOG_EMERG, cf, ngx_errno, ngx_open_file_n " \"%V\" failed", &file.name);
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, ngx_errno, ngx_open_file_n " \"%V\" failed", name);
 		return NGX_ERROR;
 	}
 
@@ -333,13 +333,13 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, ngx_str_t *name,
 	}
 
 	*size = ngx_file_size(&file.info);
-	if(*size > 1992294 /* 1.9 MiB */) {
+	if (*size > 1992294 /* 1.9 MiB */) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Resource file \"%V\" is too large, the limit is 1.9 MiB", name);
 		return NGX_ERROR;
 	}
 
 	*dest = ngx_palloc(cf->pool, *size);
-	if(*dest == NULL) {
+	if (*dest == NULL) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Not enough memory to read file \"%V\"", name);
 		return NGX_ERROR;
 	}
@@ -356,7 +356,7 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, ngx_str_t *name,
 	}
 
 	if (ngx_close_file(file.fd) == NGX_FILE_ERROR)
-		ngx_conf_log_error(NGX_LOG_ALERT, cf, ngx_errno, ngx_close_file_n " \"%V\" failed", &file.name);
+		ngx_conf_log_error(NGX_LOG_ALERT, cf, ngx_errno, ngx_close_file_n " \"%V\" failed", name);
 
 	return NGX_OK;
 }
