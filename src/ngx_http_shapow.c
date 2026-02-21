@@ -384,7 +384,7 @@ static void* ngx_http_shapow_create_loc_conf(ngx_conf_t *cf) {
 		return NULL;
 
 	/* NOSONAR
-	 * set by ngx_pcalloc():
+	 * set by pcalloc:
 	 *     conf->zone_name = { 0, NULL };
 	 *     conf->challenge_html_path = { 0, NULL };
 	 *     conf->challenge_css_path = { 0, NULL };
@@ -409,7 +409,7 @@ static void* ngx_http_shapow_create_loc_conf(ngx_conf_t *cf) {
 	return conf;
 }
 
-static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
+static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) { // NOSONAR function is readable
 	ngx_http_shapow_loc_conf_t *prev = parent;
 	ngx_http_shapow_loc_conf_t *conf = child;
 
@@ -503,6 +503,28 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	return NGX_OK;
 }
 
+static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
+	ctx->sh->table4 = ngx_slab_calloc_locked(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node4_t*));
+	if (ctx->sh->table4 == NULL)
+		return NGX_ERROR;
+#endif
+
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
+	ctx->sh->table6 = ngx_slab_calloc_locked(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node6_t*));
+	if (ctx->sh->table6 == NULL)
+		return NGX_ERROR;
+#endif
+
+	// set a random hash seed
+	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed)) {
+		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shapow: failed to generate random bytes");
+		return NGX_ERROR;
+	}
+
+	return NGX_OK;
+}
+
 static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
 	ngx_http_shapow_ctx_t *ctx = shm_zone->data;
 
@@ -521,63 +543,70 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 		} else {
 			ctx->sh->next_ordinal = 0;
 			ctx->sh->last_prune_ordinal = 0;
+
 			ngx_shmtx_lock(&ctx->shpool->mutex);
-			for (size_t bucket = 0; bucket < octx->bucket_count; ++bucket) {
+
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
+			for (size_t bucket = 0; bucket < octx->bucket_count; ++bucket)
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node4_t, ctx->shpool, ctx->sh->table4[bucket]);
+			ngx_slab_free_locked(ctx->shpool, ctx->sh->table4);
 #endif
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
+			for (size_t bucket = 0; bucket < octx->bucket_count; ++bucket)
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node6_t, ctx->shpool, ctx->sh->table6[bucket]);
+			ngx_slab_free_locked(ctx->shpool, ctx->sh->table6);
 #endif
-			}
+
+			ngx_int_t rc = ngx_http_shapow_init_zone_tables(ctx);
+
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
+			return rc;
 		}
 	}
 
 	ctx->shpool = (ngx_slab_pool_t*) shm_zone->shm.addr;
 
-	if (shm_zone->shm.exists) {
-		// already initialized (apparently this can happen on Windows? leaving for posterity)
+	if (shm_zone->shm.exists) { // Windows-specific
 		ctx->sh = ctx->shpool->data;
 		return NGX_OK;
 	}
 
 	// initialize the shared zone
-	ctx->sh = ngx_slab_alloc(ctx->shpool, sizeof(ngx_http_shapow_shctx_t));
-	if (ctx->sh == NULL)
+	ngx_shmtx_lock(&ctx->shpool->mutex);
+
+	ctx->sh = ngx_slab_alloc_locked(ctx->shpool, sizeof(ngx_http_shapow_shctx_t));
+	/* set by calloc:
+	 *     conf->last_prune_ordinal = 0
+	 *     conf->next_ordinal = 0
+	 */
+	if (ctx->sh == NULL) {
+		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_ERROR;
+	}
 	ctx->shpool->data = ctx->sh;
-
-	// initialize hashtables
-#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
-	ctx->sh->table4 = ngx_slab_calloc(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node4_t*));
-	if (ctx->sh->table4 == NULL)
-		return NGX_ERROR;
-#endif
-
-#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
-	ctx->sh->table6 = ngx_slab_calloc(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node6_t*));
-	if (ctx->sh->table6 == NULL)
-		return NGX_ERROR;
-#endif
 
 	// initialize misc variables
 	ctx->epoch = ngx_time();
 
 	if (getrandom((char*) &ctx->random_challenge, sizeof(ctx->random_challenge), 0) != sizeof(ctx->random_challenge)) {
 		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shapow: failed to generate random bytes");
+		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_ERROR;
 	}
 
-	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed)) {
-		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "shapow: failed to generate random bytes");
-		return NGX_ERROR;
+	// initialize zone tables
+	ngx_int_t rc = ngx_http_shapow_init_zone_tables(ctx);
+
+	if (rc != NGX_OK) {
+		ngx_shmtx_unlock(&ctx->shpool->mutex);
+		return rc;
 	}
 
 	// initialize logging
 	size_t len = sizeof(" in shapow zone \"\"") + shm_zone->shm.name.len;
 
-	ctx->shpool->log_ctx = ngx_slab_alloc(ctx->shpool, len);
+	ctx->shpool->log_ctx = ngx_slab_alloc_locked(ctx->shpool, len);
+	ngx_shmtx_unlock(&ctx->shpool->mutex);
 	if (ctx->shpool->log_ctx == NULL)
 		return NGX_ERROR;
 
