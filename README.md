@@ -63,9 +63,6 @@ You will need to compile and install the module by hand.
 	```bash
 	echo "load_module modules/ngx_http_shapow_module.so;" | sudo tee /etc/nginx/modules-available/mod-http-shapow.conf
 	```
-	```bash
-	echo "load_module modules/ngx_http_shapow_module.so;" | sudo tee /etc/nginx/modules-available/mod-http-shapow.conf
-	```does
 9. Restart Nginx.
 
 #### Portability
