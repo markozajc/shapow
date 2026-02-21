@@ -439,6 +439,12 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 		return NGX_CONF_ERROR ;
 	}
 
+	if (conf->difficulty > SHA256_DIGEST_LENGTH * 8) {
+		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "shapow_difficulty must be between 0 and %ui",
+				(ngx_uint_t) SHA256_DIGEST_LENGTH * 8);
+		return NGX_CONF_ERROR ;
+	}
+
 	// use file data from prev if they use the same paths and prev is enabled, otherwise read the file (for all 4 files)
 
 	// challenge_html
