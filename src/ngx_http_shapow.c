@@ -41,11 +41,11 @@ typedef enum {
 #define NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT \
 	"const nonceLength = " NGX_HTTP_SHAPOW_STR(NGX_HTTP_SHAPOW_NONCE_LENGTH)";\n" \
 	"const difficulty = %i;\n" \
-	"const serverData = '%V%016xz%016xz';\n"
+	"const serverData = '%V%016xi%016xi';\n"
 // serverData length must be a multiple of 4 bytes (8 characters in hex) due to constraints in Uint32Array
 
 // challenge = hex(ip (ipv4 is padded to 16 bytes) || ngx_time() || random_challenge)
-#define NGX_HTTP_SHAPOW_CHALLENGE_LENGTH (sizeof(struct in6_addr) + sizeof(time_t) + sizeof(uint64_t))
+#define NGX_HTTP_SHAPOW_CHALLENGE_LENGTH (sizeof(struct in6_addr) + sizeof(int64_t) + sizeof(uint64_t))
 #define NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH (NGX_HTTP_SHAPOW_CHALLENGE_LENGTH + NGX_HTTP_SHAPOW_NONCE_LENGTH)
 
 #define ngx_http_shapow_destroy_bucket(TYPE, POOL, BUCKET) { \
@@ -713,7 +713,7 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 	u_char buf[256]; // NOSONAR no point in zero-initializing this
 	// 256 bytes is arbitrarily decided, but it should be more than plenty for this format
 	const u_char *end = ngx_snprintf(buf, sizeof(buf), NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT, conf->difficulty,
-			&addr_str, ngx_time(), ctx->random_challenge);
+			&addr_str, (ngx_int_t) ngx_time(), (ngx_uint_t) ctx->random_challenge); // NOSONAR cast isn't redundant
 
 	return ngx_http_shapow_serve_buffer(r, buf, end - buf);
 }
@@ -803,7 +803,7 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 	// check response time
 	// I'm not sure how/when nginx's time cache is updated, but it's probably not safe to assume it's the same for all
 	// workers, so I'm allowing the possibility that resp_time is higher than ngx_time()
-	time_t resp_time; // NOSONAR initialized right after
+	int64_t resp_time; // NOSONAR initialized right after
 	memcpy(&resp_time, data + sizeof(struct in6_addr), sizeof(resp_time));
 	resp_time = be64toh(resp_time);
 	if (ngx_abs(ngx_time() - resp_time) > NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE)
@@ -811,7 +811,7 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 
 	// check random challenge
 	uint64_t resp_random_challenge; // NOSONAR initialized right after
-	memcpy(&resp_random_challenge, data + sizeof(struct in6_addr) + sizeof(time_t), sizeof(resp_random_challenge));
+	memcpy(&resp_random_challenge, data + sizeof(struct in6_addr) + sizeof(int64_t), sizeof(resp_random_challenge));
 	resp_random_challenge = be64toh(resp_random_challenge);
 	if (resp_random_challenge != ctx->random_challenge)
 		return false;
