@@ -333,7 +333,16 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, ngx_str_t *name,
 	}
 
 	*size = ngx_file_size(&file.info);
+	if(*size > 1992294 /* 1.9 MiB */) {
+		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Resource file \"%V\" is too large, the limit is 1.9 MiB", name);
+		return NGX_ERROR;
+	}
+
 	*dest = ngx_palloc(cf->pool, *size);
+	if(*dest == NULL) {
+		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Not enough memory to read file \"%V\"", name);
+		return NGX_ERROR;
+	}
 
 	ssize_t read = ngx_read_file(&file, *dest, *size, 0);
 	if (read == NGX_ERROR) {
@@ -794,12 +803,16 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 	// check response time
 	// I'm not sure how/when nginx's time cache is updated, but it's probably not safe to assume it's the same for all
 	// workers, so I'm allowing the possibility that resp_time is higher than ngx_time()
-	time_t resp_time = be64toh(*((time_t* ) (data + sizeof(struct in6_addr))));
+	time_t resp_time; // NOSONAR initialized right after
+	memcpy(&resp_time, data + sizeof(struct in6_addr), sizeof(resp_time));
+	resp_time = be64toh(resp_time);
 	if (ngx_abs(ngx_time() - resp_time) > NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE)
 		return false;
 
 	// check random challenge
-	uint64_t resp_random_challenge = be64toh(*((uint64_t* ) (data + sizeof(struct in6_addr) + sizeof(time_t))));
+	uint64_t resp_random_challenge; // NOSONAR initialized right after
+	memcpy(&resp_random_challenge, data + sizeof(struct in6_addr) + sizeof(time_t), sizeof(resp_random_challenge));
+	resp_random_challenge = be64toh(resp_random_challenge);
 	if (resp_random_challenge != ctx->random_challenge)
 		return false;
 
