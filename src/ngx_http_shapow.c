@@ -451,7 +451,10 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	}
 
 	// challenge_css
-	if (prev->enabled && prev->challenge_css_path.len > 0
+	if (conf->challenge_css_path.len == 0) {
+		conf->challenge_css = NULL;
+
+	} else if (prev->enabled && prev->challenge_css_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_css_path, &conf->challenge_css_path)) {
 		conf->challenge_css = prev->challenge_css;
 
@@ -461,7 +464,10 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	}
 
 	// challenge_js
-	if (prev->enabled && prev->challenge_js_path.len > 0
+	if (conf->challenge_js_path.len == 0) {
+		conf->challenge_js = NULL;
+
+	} else if (prev->enabled && prev->challenge_js_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_js_path, &conf->challenge_js_path)) {
 		conf->challenge_js = prev->challenge_js;
 
@@ -471,7 +477,10 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	}
 
 	// challenge_worker
-	if (prev->enabled && prev->challenge_worker_path.len > 0
+	if (conf->challenge_worker_path.len == 0) {
+		conf->challenge_worker = NULL;
+
+	} else if (prev->enabled && prev->challenge_worker_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_worker_path, &conf->challenge_worker_path)) {
 		conf->challenge_worker = prev->challenge_worker;
 
@@ -1001,20 +1010,23 @@ static ngx_int_t ngx_http_shapow_handler(ngx_http_request_t *r) { // NOSONAR
 	static const ngx_str_t content_type_css = ngx_string("text/css");
 
 	// always serve challenge resource files on their path suffixes
-	if (ngx_http_shapow_str_ends_with(&r->uri, NGX_HTTP_SHAPOW_URI_CHALL_CSS,
-			sizeof(NGX_HTTP_SHAPOW_URI_CHALL_CSS) - 1)) {
+	if (conf->challenge_css
+			&& ngx_http_shapow_str_ends_with(&r->uri, NGX_HTTP_SHAPOW_URI_CHALL_CSS,
+					sizeof(NGX_HTTP_SHAPOW_URI_CHALL_CSS) - 1)) {
 		r->headers_out.status = NGX_HTTP_OK;
 		r->headers_out.content_type = content_type_css;
 		return ngx_http_shapow_serve_buffer(r, conf->challenge_css, conf->challenge_css_size);
 
-	} else if (ngx_http_shapow_str_ends_with(&r->uri, NGX_HTTP_SHAPOW_URI_CHALL_JS,
-			sizeof(NGX_HTTP_SHAPOW_URI_CHALL_JS) - 1)) {
+	} else if (conf->challenge_js
+			&& ngx_http_shapow_str_ends_with(&r->uri, NGX_HTTP_SHAPOW_URI_CHALL_JS,
+					sizeof(NGX_HTTP_SHAPOW_URI_CHALL_JS) - 1)) {
 		r->headers_out.status = NGX_HTTP_OK;
 		r->headers_out.content_type = content_type_js;
 		return ngx_http_shapow_serve_buffer(r, conf->challenge_js, conf->challenge_js_size);
 
-	} else if (ngx_http_shapow_str_ends_with(&r->uri, NGX_HTTP_SHAPOW_URI_CHALL_WORKER,
-			sizeof(NGX_HTTP_SHAPOW_URI_CHALL_WORKER) - 1)) {
+	} else if (conf->challenge_worker
+			&& ngx_http_shapow_str_ends_with(&r->uri, NGX_HTTP_SHAPOW_URI_CHALL_WORKER,
+					sizeof(NGX_HTTP_SHAPOW_URI_CHALL_WORKER) - 1)) {
 		r->headers_out.status = NGX_HTTP_OK;
 		r->headers_out.content_type = content_type_js;
 		return ngx_http_shapow_serve_buffer(r, conf->challenge_worker, conf->challenge_worker_size);
