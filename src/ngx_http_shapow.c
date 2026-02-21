@@ -42,6 +42,7 @@ typedef enum {
 	"const nonceLength = " NGX_HTTP_SHAPOW_STR(NGX_HTTP_SHAPOW_NONCE_LENGTH)";\n" \
 	"const difficulty = %i;\n" \
 	"const serverData = '%V%016xz%016xz';\n"
+// serverData length must be a multiple of 4 bytes (8 characters in hex) due to constraints in Uint32Array
 
 // challenge = hex(ip (ipv4 is padded to 16 bytes) || ngx_time() || random_challenge)
 #define NGX_HTTP_SHAPOW_CHALLENGE_LENGTH (sizeof(struct in6_addr) + sizeof(time_t) + sizeof(uint64_t))
@@ -1085,7 +1086,7 @@ static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 	static const ngx_str_t header_csp_key = ngx_string("Content-Security-Policy");
 	static const ngx_str_t header_csp_value = ngx_string(
 			"default-src 'self';"
-			"script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-n5/yu3Prbxz0iuaChj1dnMv0BD7zul2ThC5fOj9FuTo='");
+			"script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-5sBVMf3rpfzmovinEBS+zknIk18/JTKQhrIdGhsXVoA='");
 	// the hash corresponds to the inline script in challenge.html's <head>
 
 	ngx_list_part_t *part = &r->headers_out.headers.part;

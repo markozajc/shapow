@@ -52,7 +52,6 @@ try {
 			logElement.appendChild(createLine(`Error in worker: ${m.data[1]}`));
 
 		} else if (m.data[0] === 2) { // solved
-			// TODO redirect
 			progressElement.value = 1;
 			document.body.classList.add("done");
 			iterLine.textContent =

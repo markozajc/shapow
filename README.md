@@ -1,17 +1,20 @@
 # SHAPOW
-![A screenshot of the challenge page](./screenshot.png)
 Nginx module to keep bots out with a proof-of-work challenge.
 
-SHAPOW presents an automated CAPTCHA page where configured. Real browsers burn some processing power bruteforcing a computational challenge, while bots are dissuaded from proceeding due to costs of performing this in bulk. The difficulty (i.e. approximate amount of CPU time required) can also be configured.
+![A screenshot of the challenge page](./screenshot.png)
+
+SHAPOW presents a zero-click CAPTCHA page on configured locations. Real browsers burn some processing power bruteforcing a computational challenge, while bots are dissuaded from proceeding due to the high cost of performing this in bulk. The difficulty (i.e. approximate amount of CPU time required) can also be configured.
 
 After completing the challenge, visitors are whitelisted by their IP address, optionally also limited by duration and/or visit count.
 
 Cookies are not required to pass the challenge page, but JavaScript is.
 
+See it in action on the [SHAPOW demo page](https://zajc.tel/shapow-demo). You stay whitelisted for 5 seconds, so make sure to remove the `shapow-response` parameter to see the challenge again. There's also the [high difficulty demo page](https://zajc.tel/shapow-demo-diff25) that uses a much higher difficulty value (25) so you can get a better look at the page.
+
 ## Installation
 
 ### Debian
-Ready-made packages for Debian stable are available at https://files.zajc.tel/public/builds/shapow. Users of other releases can very easily compile with the instructions below.
+Ready-made packages for Debian stable are available at https://files.zajc.tel/public/builds/shapow. Users of other releases can very easily compile the package with the instructions below.
 
 1. Install build dependencies
 
@@ -35,21 +38,23 @@ Ready-made packages for Debian stable are available at https://files.zajc.tel/pu
 
 5. Packages will be created in the parent directory.
 
+SHAPOW is built against a certain version of the Nginx ABI - it depends on `nginx-abi-*`, for example `nginx-abi-1.28.1-1`, which is provided by the `nginx` package depending on its version. Some Nginx updates will break compatibility, meaning you have to recompile SHAPOW before Nginx can be upgraded.
+
 ### Arch
 A PKGBUILD is available on AUR: https://aur.archlinux.org/packages/nginx-mod-shapow. It can be compiled and installed with an AUR helper or manually with makepkg.
 
 ### Other
 You will need to compile and install the module by hand.
 
-1. Install build dependencies for nginx. SHAPOW does not require anything more than that.
-2. Download the source of the nginx binaries you're using. If you're getting nginx from your distribution, make sure you use the same source files (including patches and whatnot), otherwise you will run into issues because nginx has no ABI stability. The official source distribution is at `https://nginx.org/download/nginx-<version>.tar.gz`
+1. Install build dependencies for Nginx. SHAPOW does not require anything more than that.
+2. Download the source of the Nginx binaries you're using. If you're getting Nginx from your distribution, make sure you use the same source files (including patches and whatnot), otherwise you will likely into issues when loading the module because Nginx has no ABI stability. The official source distribution is at `https://nginx.org/download/nginx-<version>.tar.gz`
 3. Clone the module repository from `https://git.zajc.tel/shapow.git` or download and extract the source tarball from `https://files.zajc.tel/public/builds/shapow/<version>/source.tar.xz` and `cd` into it.
 4. (optional) Adjust build configuration in `src/config.h`.
 5. Build the module binary with
 	```bash
 	NGINX_PATH=/path/to/nginx/source tools/build.sh
 	```
-6. The script will tell you where the `ngx_http_shapow_module.so` file was created. Copy it to the nginx modules directory. This is usually `/usr/lib/nginx/modules`, but you should consult the `--modules-path` build flag that your nginx binary was compiled with (`nginx -V` to see all flags) for the exact path.
+6. The script will tell you where the `ngx_http_shapow_module.so` file was created. Copy it to the Nginx modules directory - this is usually `/usr/lib/nginx/modules`, but you should consult the `--modules-path` build flag that your Nginx binary was compiled with (`nginx -V` to see all flags) for the exact path.
 7. Create the resource root path (`/usr/share/libnginx-mod-http-shapow` by default, but you can change it in `src/config.h`) and copy the files from the `resources/` directory into it.
 	```bash
 	sudo mkdir -p /usr/share/libnginx-mod-http-shapow && sudo cp resources/* /usr/share/libnginx-mod-http-shapow
@@ -61,10 +66,10 @@ You will need to compile and install the module by hand.
 	```bash
 	echo "load_module modules/ngx_http_shapow_module.so;" | sudo tee /etc/nginx/modules-available/mod-http-shapow.conf
 	```does
-9. Restart nginx.
+9. Restart Nginx.
 
 #### Portability
-Most of the module is written using portable calls, but a few lines of code depend `endian.h` and `sys/random.h`, which are nonstandard. For challenge verification, OpenSSL's sha.h is used, which means that nginx has to be compiled against OpenSSL.
+Most of the module is written using portable calls, but a few lines of code depend `endian.h` and `sys/random.h`, which are nonstandard. For challenge verification, OpenSSL's sha.h is used, which means that Nginx has to be compiled against OpenSSL.
 
 If you'd like to use this module on an unsupported platform, let me know, and I'll work something out.
 
@@ -154,72 +159,72 @@ Sets the shared memory zone to be used, identified by `key`. This directive is m
 
 ### `shapow_difficulty`
 Syntax: **`shapow_difficulty`***` number`*  
-Default: `shapow_difficulty 12`
+Default: `shapow_difficulty 12`  
 Context: http, server, location, if
 
 Sets the challenge difficulty to be used, expressed as the *`number`* of leading bits that must be zero. Higher values means more computation required to solve the challenge, which in turn potentially means more bots deterred, but also longer wait times for users. Values in the 10-14 range are recommended, and you are encouraged to run the challenge a few times (especially on low-end or underpowered devices such as smartphones and laptops!) to see how it affects the wait time.
 
-Keep in mind that while the default challenge page provides a progress bar based on the iteration count, the challenge works more like a lottery; wait times tend to average out on some number, but they will have outliers.
+Keep in mind that while the default challenge page provides a progress bar based on the iteration count, the challenge works more like a lottery; wait times tend to average out on some number, but there will be outliers.
 
 ### `shapow_whitelist_count`
 Syntax: **`shapow_whitelist_count`***` number`*  
-Default: `shapow_whitelist_count 0`
+Default: `shapow_whitelist_count 0`  
 Context: http, server, location, if
 
-Sets the whitelist usage count limit. When an address is whitelisted, it is allowed to make *`number`* requests to the location with this directive before having to solve the challenge again. If two locations share the same `shapow_zone` use a different `shapow_whitelist_count`, whitelist can remain valid for one location but not the other.
+Sets the whitelist usage count limit. When an address is whitelisted, it is allowed to make *`number`* requests to locations using the same `shapow_zone` before having to solve the challenge again. If two locations share the same `shapow_zone` but use a different `shapow_whitelist_count`, the address can remain whitelisted for one location but not the other.
 
 ### `shapow_whitelist_duration`
-Syntax: **`shapow_whitelist_duration`***` path`*  
-Default: `shapow_whitelist_count /usr/share/libnginx-mod-http-shapow/challenge.html`
+Syntax: **`shapow_whitelist_duration`***` time`*  
+Default: `shapow_whitelist_duration 0s`  
 Context: http, server, location, if
 
-Sets the challenge HTML file served to non-whitelisted addresses. The file is read from *`path`* on module load and stored in memory until reload. *`path`* is not relative to `root` or `alias` and should be absolute. whitelist duration.
+Sets the whitelist duration limit. When an address is whitelisted, it is allowed to make requests to locations using the same `shapow_zone` until *`time`* runs out before having to solve the challenge again. If two locations share the same `shapow_zone` but use a different `shapow_whitelist_duration`, the address can remain whitelisted for one location but not the other.
 
 ### `shapow_challenge_html_path`
 Syntax: **`shapow_challenge_html_path`***` path`*  
-Default: `shapow_challenge_html_path /usr/share/libnginx-mod-http-shapow/challenge.html`
+Default: `shapow_challenge_html_path /usr/share/libnginx-mod-http-shapow/challenge.html`  
 Context: http, server, location, if
 
 Sets the challenge HTML file served to non-whitelisted addresses. The file is read from *`path`* on module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
 For requests that return the challenge page, the `Content-Security-Policy` is set to the following value:
 ```
-default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-n5/yu3Prbxz0iuaChj1dnMv0BD7zul2ThC5fOj9FuTo='
+default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-5sBVMf3rpfzmovinEBS+zknIk18/JTKQhrIdGhsXVoA='
 ```
 
-Note that the `unsafe-inline` directive is ignored by browsers that support `unsafe-hashes`. `sha256-n5/yu3Prbxz0iuaChj1dnMv0BD7zul2ThC5fOj9FuTo=` corresponds to the following script (kept on one line to make sure formatting doesn't change the hash):
+Note that the `unsafe-inline` directive is ignored by browsers that support `unsafe-hashes`. `sha256-5sBVMf3rpfzmovinEBS+zknIk18/JTKQhrIdGhsXVoA=` corresponds to the following script (kept on one line to make sure formatting doesn't change the hash):
 ```
-<script>(function(){base=document.createElement("base"); base.href=location.pathname+"/"; document.head.prepend(base)})()</script>
+<script>(function(){p=location.pathname; b=document.createElement("base"); b.href=p+"/"; if (!p.endsWith("/")) document.head.prepend(b)})()</script>
 ```
 
 [Browsers tend to handle relative paths unintuitively](https://stackoverflow.com/q/31111257), including those to load resources, and this inline script works around that behaviour. If you wish to use it in a custom challenge HTML file, you have to copy it verbatim to prevent changes to the hash. Other scripts and resources can't be included inline without recompiling the module with a different CSP header.
 
 ### `shapow_challenge_css_path`
 Syntax: **`shapow_challenge_css_path`***` path`*` | ''`  
-Default: `shapow_challenge_css_path /usr/share/libnginx-mod-http-shapow/challenge.css`
+Default: `shapow_challenge_css_path /usr/share/libnginx-mod-http-shapow/challenge.css`  
 Context: http, server, location, if
 
 Sets the challenge CSS file served to all requests for paths ending with `/shapow_internal/challenge.css`. The file is read from *`path`* at module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
-If *`path`* is an empty string (`shapow_challenge_css_path '';`), no file will be loaded and requests to `/shapow_internal/challenge.css` will not be treated specially.
+If *`path`* is an empty string (`shapow_challenge_css_path ''`), no file will be loaded and requests to `/shapow_internal/challenge.css` will not be treated specially.
 
 ### `shapow_challenge_js_path`
 Syntax: **`shapow_challenge_js_path`***` path`*` | ''`  
-Default: `shapow_challenge_js_path /usr/share/libnginx-mod-http-shapow/challenge.js`
+Default: `shapow_challenge_js_path /usr/share/libnginx-mod-http-shapow/challenge.js`  
 Context: http, server, location, if
 
 Sets the challenge script file served to all requests for paths ending with `/shapow_internal/challenge.js`. The file is read from *`path`* at module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
-If *`path`* is an empty string (`shapow_challenge_js_path '';`), no file will be loaded and requests to `/shapow_internal/challenge.js` will not be treated specially.
+If *`path`* is an empty string (`shapow_challenge_js_path ''`), no file will be loaded and requests to `/shapow_internal/challenge.js` will not be treated specially.
 
 ### `shapow_challenge_worker_path`
 Syntax: **`shapow_challenge_worker_path`***` path`*` | ''`  
-Default: `shapow_challenge_worker_path /usr/share/libnginx-mod-http-shapow/challenge-worker.js`
+Default: `shapow_challenge_worker_path /usr/share/libnginx-mod-http-shapow/challenge-worker.js`  
 Context: http, server, location, if
 
 Sets the challenge worker script file served to all requests for paths ending with `/shapow_internal/challenge-worker.js`. The file is read from *`path`* at module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
-If *`path`* is an empty string (`shapow_challenge_worker_path '';`), no file will be loaded and requests to `/shapow_internal/challenge-worker.js` will not be treated specially.
+If *`path`* is an empty string (`shapow_challenge_worker_path ''`), no file will be loaded and requests to `/shapow_internal/challenge-worker.js` will not be treated specially.
 
 ### `shapow_zone_add`
 Syntax: **`shapow_zone_add`***` key size number`*  
@@ -232,7 +237,7 @@ Creates a shared memory zone for `shapow_zone`. The zone stores the table of whi
 - *`number`* sets the number of hash buckets, see the Zone size section for guidance
 
 ## Zone size
-The shared memory zone keeps both the hashtable (the size of which is determined by the bucket count) and whitelist entries.
+The shared memory zone stores both the whitelist hash table (the size of which is determined by the bucket count) and the entries themselves.
 
 SHAPOW uses separate chaining and a fixed bucket count. This means that higher bucket counts improve lookup time (and by extension latency) when there are lots of whitelist entries, but consume more memory. Using 65536 buckets, which takes about 1MiB in the shared zone, seems like a good starting value.
 
@@ -242,10 +247,10 @@ This means that **a 64MiB zone with 65536 buckets can store about 2 million IPv4
 
 When the zone runs out of memory, the oldest half of whitelists are removed. Requests coming from removed addresses will be shown a challenge page again, even if you haven't set `shapow_whitelist_duration` or a `shapow_whitelist_count`.
 
-You can also improve memory efficiency by disabling the `shapow_whitelist_count` and/or `shapow_whitelist_duration` directives in `src/config.h` and recompiling the module. Disabling either will halve space occupied by IPv6 entries, and disabling both will halve the space occupied by IPv4 entries. Disabling both does not further reduce space used by IPv4 entries because nginx' memory allocator rounds sizes up to the nearest power of two.
+You can also improve memory efficiency by disabling the `shapow_whitelist_count` and/or `shapow_whitelist_duration` directives in `src/config.h` and recompiling the module. Disabling either will halve space occupied by IPv6 entries, and disabling both will halve the space occupied by IPv4 entries. Disabling both does not further reduce space used by IPv4 entries because Nginx' memory allocator rounds sizes up to the nearest power of two.
 
 ## Quirks
-- Due to how nginx handles request phases, the module might not trigger at all for certain directives (so far I've only seen this happen with `return`). Moving the handler to the rewrite phase (`NGX_HTTP_REWRITE_PHASE`) fixes this behaviour, but means directives can't be used in if statements, again due to how phases work.
+- Due to how Nginx handles request phases, the module might not trigger at all for certain directives (so far I've only seen this happen with `return`). Moving the handler to the rewrite phase (`NGX_HTTP_REWRITE_PHASE`) fixes this behaviour, but means directives can't be used in if statements, again due to how phases work.
 - SHAPOW's HTML uses relative paths to load resources, but with advanced or very specific `location` setups this might not work as expected. To work around this, you can create a catch-all location just for `/shapow_internal/`:
 	```nginx
 	server {
@@ -267,10 +272,15 @@ You can also improve memory efficiency by disabling the `shapow_whitelist_count`
 	}
 	```
 	If you use a custom HTML file, you can also load resources from an absolute path and avoid this altogether, but make sure they're on the same [origin](https://developer.mozilla.org/en-US/docs/Glossary/Origin) to comply with the Content-Security-Policy rules!
-- The request address is used directly, meaning this module won't work for servers behind reverse proxies, because nginx sees a different client address. Supporting different means of distinguishing users (such as from a variable like `$proxy_add_x_forwarded_for`) is currently not supported and would be difficult to implement efficiently. Let me know if you need this functionality, and I'll try to work something out. Patches are also welcome :).
+- The default challenge script uses [SubtleCrypto](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto), which is only available in secure (HTTPS) contexts. To make SHAPOW work over HTTP, you will need to find an alternative.
+- The request address is used directly, meaning this module won't work for servers behind reverse proxies, because Nginx sees a different client address. Supporting different means of distinguishing users (such as from a variable like `$proxy_add_x_forwarded_for`) is currently not supported and would be difficult to implement efficiently. Let me know if you need this functionality, and I'll try to work something out. Patches are also welcome :).
 
-## See also
+## Mirrors
+- https://git.zajc.tel/shapow.git
+- https://github.com/markozajc/shapow
+
+## Similar projects
 - https://github.com/simon987/ngx_http_js_challenge_module
-	+ Similar idea to SHAPOW, but depends on cookies instead of a whitelist, and rolls its own crypto.
+	+ Similar idea to SHAPOW, but depends on cookies instead of a whitelist, rolls its own crypto, and does not allow difficulty adjustment (it seems hardcoded to 16).
 - https://anubis.techaro.lol/
 	+ Much more actively developed, but also depends on cookies and runs as a separate daemon.

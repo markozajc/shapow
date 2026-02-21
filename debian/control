@@ -16,11 +16,11 @@ Depends: ${misc:Depends},
          ${shlibs:Depends},
 Recommends: nginx,
 Description: Nginx module to keep bots out with a proof-of-work challenge.
- SHAPOW presents an automated CAPTCHA page where configured. Real browsers burn
- some processing power bruteforcing a computational challenge, while bots are
- dissuaded from proceeding due to costs of performing this in bulk. The
- difficulty (i.e. approximate amount of CPU time required) can also be
- configured.
+ SHAPOW presents a zero-click CAPTCHA page on configured locations. Real
+ browsers burn some processing power bruteforcing a computational
+ challenge, while bots are dissuaded from proceeding due to the high cost
+ of performing this in bulk. The difficulty (i.e. approximate amount of
+ CPU time required) can also be configured.
  .
- After completing the challenge, visitors are whitelisted by their IP address,
- optionally also limited by duration and/or visit count.
+ After completing the challenge, visitors are whitelisted by their IP
+ address, optionally also limited by duration and/or visit count.
