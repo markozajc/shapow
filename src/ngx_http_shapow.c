@@ -863,8 +863,12 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 	int64_t resp_time; // NOSONAR initialized right after
 	memcpy(&resp_time, data + sizeof(struct in6_addr), sizeof(resp_time));
 	resp_time = be64toh(resp_time);
-	if (ngx_abs(ngx_time() - resp_time) > NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE)
+
+	time_t now = ngx_time();
+	if (resp_time > now + NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE
+			|| resp_time < now - NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE) {
 		return false;
+	}
 
 	// check random challenge
 	uint64_t resp_random_challenge; // NOSONAR initialized right after
@@ -1038,7 +1042,7 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 		return NGX_DECLINED;
 
 	// check if response has a valid challenge response
-	u_char *challenge_response = ngx_http_shapow_find_challenge_response(&r->args);
+	const u_char *challenge_response = ngx_http_shapow_find_challenge_response(&r->args);
 	if (challenge_response) {
 		if (!ngx_http_shapow_check_challenge_response(r, ctx, conf, challenge_response))
 			return NGX_OK;
