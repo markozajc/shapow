@@ -1,6 +1,6 @@
 //SPDX-License-Identifier: AGPL-3.0-only
 /*
- * SHAPOW - proof-of-work captcha module for nginx
+ * SHAPOW - Nginx module to keep bots out with a proof-of-work challenge
  * Copyright (C) 2026 Marko Zajc
  *
  * This program is free software: you can redistribute it and/or modify
@@ -125,6 +125,7 @@ typedef struct ngx_http_shapow_node6_s ngx_http_shapow_node6_t;
 typedef struct {
 	uint32_t next_ordinal;
 	uint32_t last_prune_ordinal;
+	ngx_uint_t bucket_count;
 
 // keep one table for each address family. the alternative (storing address family in the node) seems less efficient
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
@@ -138,8 +139,8 @@ typedef struct {
 typedef struct {
 	ngx_slab_pool_t *shpool;
 	ngx_http_shapow_shctx_t *sh;
-	ngx_uint_t bucket_count;
 	time_t epoch;
+	ngx_uint_t conf_bucket_count;
 
 	// Part of the challenge is random to prevent generating solutions in advance. The random number is regenerated
 	// every time the module is reloaded.
@@ -523,23 +524,19 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 }
 
 static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
+	ctx->sh->bucket_count = ctx->conf_bucket_count;
+
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
-	ctx->sh->table4 = ngx_slab_calloc_locked(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node4_t*));
+	ctx->sh->table4 = ngx_slab_calloc_locked(ctx->shpool, ctx->conf_bucket_count * sizeof(ngx_http_shapow_node4_t*));
 	if (ctx->sh->table4 == NULL)
 		return NGX_ERROR;
 #endif
 
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
-	ctx->sh->table6 = ngx_slab_calloc_locked(ctx->shpool, ctx->bucket_count * sizeof(ngx_http_shapow_node6_t*));
+	ctx->sh->table6 = ngx_slab_calloc_locked(ctx->shpool, ctx->conf_bucket_count * sizeof(ngx_http_shapow_node6_t*));
 	if (ctx->sh->table6 == NULL)
 		return NGX_ERROR;
 #endif
-
-	// set a random hash seed
-	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed)) {
-		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes");
-		return NGX_ERROR;
-	}
 
 	return NGX_OK;
 }
@@ -551,27 +548,26 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	ngx_http_shapow_ctx_t *octx = data;
 	if (octx) {
 		ctx->random_challenge = octx->random_challenge;
+		ctx->hash_seed = octx->hash_seed;
 		ctx->epoch = octx->epoch;
 		ctx->sh = octx->sh;
 		ctx->shpool = octx->shpool;
 
-		if (octx->bucket_count == ctx->bucket_count) {
-			ctx->hash_seed = octx->hash_seed;
+		if (octx->conf_bucket_count == ctx->conf_bucket_count) {
 			return NGX_OK;
 
 		} else {
+			ngx_shmtx_lock(&ctx->shpool->mutex);
 			ctx->sh->next_ordinal = 0;
 			ctx->sh->last_prune_ordinal = 0;
 
-			ngx_shmtx_lock(&ctx->shpool->mutex);
-
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
-			for (size_t bucket = 0; bucket < octx->bucket_count; ++bucket)
+			for (size_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node4_t, ctx->shpool, ctx->sh->table4[bucket]);
 			ngx_slab_free_locked(ctx->shpool, ctx->sh->table4);
 #endif
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
-			for (size_t bucket = 0; bucket < octx->bucket_count; ++bucket)
+			for (size_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node6_t, ctx->shpool, ctx->sh->table6[bucket]);
 			ngx_slab_free_locked(ctx->shpool, ctx->sh->table6);
 #endif
@@ -607,8 +603,13 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	// initialize misc variables
 	ctx->epoch = ngx_time();
 
-	if (getrandom((char*) &ctx->random_challenge, sizeof(ctx->random_challenge), 0) != sizeof(ctx->random_challenge)) {
+	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed)) {
 		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes");
+		return NGX_ERROR;
+	}
+
+	if (getrandom((char*) &ctx->random_challenge, sizeof(ctx->random_challenge), 0) != sizeof(ctx->random_challenge)) {
+		ngx_log_error(NGX_LOG_DEBUG, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes");
 		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_ERROR;
 	}
@@ -660,8 +661,8 @@ static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *
 		return NGX_CONF_ERROR ;
 	}
 
-	ctx->bucket_count = ngx_atoi(value[3].data, value[3].len);
-	if (ctx->bucket_count <= 0) {
+	ctx->conf_bucket_count = ngx_atoi(value[3].data, value[3].len);
+	if (ctx->conf_bucket_count <= 0) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid bucket count \"%V\"", &value[3]);
 		return NGX_CONF_ERROR ;
 	}
@@ -864,7 +865,7 @@ static ngx_uint_t ngx_http_shapow_get_address_bucket_id(const ngx_http_shapow_ct
 	// for non-INET sockaddrs are already ignored by the handler
 
 	ngx_crc32_final(hash);
-	return hash % ctx->bucket_count;
+	return hash % ctx->sh->bucket_count;
 }
 
 static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_shapow_ctx_t *ctx, ngx_uint_t bucket_id,
@@ -920,7 +921,7 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW zone %V: current node ordinal is %ui, pruning nodes <= %ui",
 			&conf->zone_name, (ngx_uint_t ) ctx->sh->next_ordinal, (ngx_uint_t ) prune_below);
 
-	for (size_t bucket_id = 0; bucket_id < ctx->bucket_count; ++bucket_id) {
+	for (size_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		ngx_http_shapow_prune_old_whitelists_for_bucket(ngx_http_shapow_node4_t, ctx->shpool,
 				ctx->sh->table4[bucket_id], prune_below)
