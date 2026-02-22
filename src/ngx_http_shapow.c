@@ -127,6 +127,10 @@ typedef struct {
 	uint32_t last_prune_ordinal;
 	ngx_uint_t bucket_count;
 
+	// Part of the challenge is random to prevent generating solutions in advance. The random number is regenerated
+	// every time tables are pruned (or whenever Nginx is restarted).
+	uint64_t random_challenge;
+
 // keep one table for each address family. the alternative (storing address family in the node) seems less efficient
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	ngx_http_shapow_node4_t **table4;
@@ -141,10 +145,6 @@ typedef struct {
 	ngx_http_shapow_shctx_t *sh;
 	time_t epoch;
 	ngx_uint_t conf_bucket_count;
-
-	// Part of the challenge is random to prevent generating solutions in advance. The random number is regenerated
-	// every time the module is reloaded.
-	uint64_t random_challenge;
 
 	// Makes worst-case hash attacks even more difficult to pull off.
 	ngx_uint_t hash_seed;
@@ -541,13 +541,21 @@ static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
 	return NGX_OK;
 }
 
+static ngx_int_t generate_random_challenge(ngx_http_shapow_ctx_t *ctx) {
+	if (getrandom((char*) &ctx->sh->random_challenge, sizeof(ctx->sh->random_challenge), 0)
+			!= sizeof(ctx->sh->random_challenge)) {
+		ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes for random_challenge");
+		return NGX_ERROR;
+	}
+	return NGX_OK;
+}
+
 static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
 	ngx_http_shapow_ctx_t *ctx = shm_zone->data;
 
 	// try reusing old data from reload
 	ngx_http_shapow_ctx_t *octx = data;
 	if (octx) {
-		ctx->random_challenge = octx->random_challenge;
 		ctx->hash_seed = octx->hash_seed;
 		ctx->epoch = octx->epoch;
 		ctx->sh = octx->sh;
@@ -603,23 +611,21 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	// initialize misc variables
 	ctx->epoch = ngx_time();
 
-	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed)) {
-		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes");
+	if(generate_random_challenge(ctx) != NGX_OK) {
+		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_ERROR;
 	}
 
-	if (getrandom((char*) &ctx->random_challenge, sizeof(ctx->random_challenge), 0) != sizeof(ctx->random_challenge)) {
-		ngx_log_error(NGX_LOG_DEBUG, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes");
+	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed)) {
+		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes for hash_seed");
 		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_ERROR;
 	}
 
 	// initialize zone tables
-	ngx_int_t rc = ngx_http_shapow_init_zone_tables(ctx);
-
-	if (rc != NGX_OK) {
+	if (ngx_http_shapow_init_zone_tables(ctx) != NGX_OK) {
 		ngx_shmtx_unlock(&ctx->shpool->mutex);
-		return rc;
+		return NGX_ERROR;
 	}
 
 	// initialize logging
@@ -732,9 +738,13 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 		return NGX_ERROR;
 	}
 
+	ngx_shmtx_lock(&ctx->shpool->mutex);
+	ngx_uint_t random_challenge = ctx->sh->random_challenge;
+	ngx_shmtx_unlock(&ctx->shpool->mutex);
+
 	const u_char *end = ngx_snprintf(buf, NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN,
 			(NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT), conf->difficulty, &addr_str, (ngx_int_t) ngx_time(), // NOSONAR cast isn't redundant
-			(ngx_uint_t) ctx->random_challenge); // NOSONAR ditto
+			random_challenge);
 
 	if (end >= buf + NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN) {
 		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "SHAPOW: challenge settings buffer is too small");
@@ -839,7 +849,11 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 	uint64_t resp_random_challenge; // NOSONAR initialized right after
 	memcpy(&resp_random_challenge, data + sizeof(struct in6_addr) + sizeof(int64_t), sizeof(resp_random_challenge));
 	resp_random_challenge = be64toh(resp_random_challenge);
-	if (resp_random_challenge != ctx->random_challenge)
+
+	ngx_shmtx_lock(&ctx->shpool->mutex);
+	ngx_uint_t random_challenge = ctx->sh->random_challenge;
+	ngx_shmtx_unlock(&ctx->shpool->mutex);
+	if (resp_random_challenge != random_challenge)
 		return false;
 
 	// check difficulty
@@ -904,8 +918,10 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 }
 
 static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_t *conf, ngx_http_shapow_ctx_t *ctx) {
+	generate_random_challenge(ctx); // not checking return because it's not critical that this succeeds
+
 	uint32_t prune_below; // NOSONAR initialized right after
-	// overflows happen every 4 billion whitelist inserts (assuming we don't restart nginx in that time!), so more
+	// overflows happen every 4 billion whitelist inserts (assuming we don't restart Nginx in that time!), so more
 	// advanced handling logic isn't really necessary
 	if (ctx->sh->last_prune_ordinal <= ctx->sh->next_ordinal) {
 		// next_ordinal did not overflow
