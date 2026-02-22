@@ -528,6 +528,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 }
 
 static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
+	// allocate new tables
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	ngx_http_shapow_node4_t **table4 = ngx_slab_calloc_locked(ctx->shpool,
 			ctx->conf_bucket_count * sizeof(ngx_http_shapow_node4_t*));
@@ -546,6 +547,23 @@ static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
 	}
 #endif
 
+	// free old tables
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
+	if (ctx->sh->table4) {
+		for (ngx_int_t bucket = 0; bucket < ctx->sh->bucket_count; ++bucket)
+			ngx_http_shapow_destroy_bucket(ngx_http_shapow_node4_t, ctx->shpool, ctx->sh->table4[bucket]);
+		ngx_slab_free_locked(ctx->shpool, ctx->sh->table4);
+	}
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
+	if (ctx->sh->table6) {
+		for (ngx_int_t bucket = 0; bucket < ctx->sh->bucket_count; ++bucket)
+			ngx_http_shapow_destroy_bucket(ngx_http_shapow_node6_t, ctx->shpool, ctx->sh->table6[bucket]);
+		ngx_slab_free_locked(ctx->shpool, ctx->sh->table6);
+	}
+#endif
+
+	// set new tables
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	ctx->sh->table4 = table4;
 #endif
@@ -589,17 +607,6 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 
 			ctx->sh->next_ordinal = 0;
 			ctx->sh->last_prune_ordinal = 0;
-
-#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
-			for (ngx_int_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
-				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node4_t, ctx->shpool, ctx->sh->table4[bucket]);
-			ngx_slab_free_locked(ctx->shpool, ctx->sh->table4);
-#endif
-#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
-			for (ngx_int_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
-				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node6_t, ctx->shpool, ctx->sh->table6[bucket]);
-			ngx_slab_free_locked(ctx->shpool, ctx->sh->table6);
-#endif
 
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 		}
@@ -959,7 +966,7 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 		ctx->sh->last_prune_ordinal = 0;
 	}
 
-	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW zone %V: current node ordinal is %ui, pruning nodes <= %ui",
+	ngx_log_error(NGX_LOG_DEBUG, ngx_cycle->log, 0, "SHAPOW zone %V: current node ordinal is %ui, pruning nodes <= %ui",
 			&conf->zone_name, (ngx_uint_t ) ctx->sh->next_ordinal, (ngx_uint_t ) prune_below);
 
 	for (ngx_int_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {

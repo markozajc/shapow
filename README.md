@@ -236,11 +236,11 @@ Creates a shared memory zone for `shapow_zone`. The zone stores the table of whi
 ## Zone size
 The shared memory zone stores both the whitelist hash table (the size of which is determined by the bucket count) and the entries themselves.
 
-SHAPOW uses separate chaining and a fixed bucket count. This means that higher bucket counts improve lookup time (and by extension latency) when there are lots of whitelist entries, but consume more memory. Using 65536 buckets, which takes about 1MiB in the shared zone, seems like a good starting value.
+SHAPOW uses separate chaining and a fixed bucket count. This means that higher bucket counts improve lookup time (and by extension latency) when there are lots of whitelist entries, but consume more memory. Using 65536 buckets, which takes about 1 MiB in the shared zone, seems like a good starting value.
 
-The size of the whitelist entries varies by protocol (IPv4 addresses are smaller than IPv6 ones). You can fit roughly 32k IPv4 addresses or 16k IPv6 addresses in 1MiB of memory.
+The size of the whitelist entries varies by protocol (IPv4 addresses are smaller than IPv6 ones). You can fit roughly 32k IPv4 addresses or 16k IPv6 addresses in 1 MiB of memory.
 
-This means that **a 64MiB zone with 65536 buckets can store about 2 million IPv4 entries, or 1 million IPv6 entries** (or any mix of the two).
+This means that **a 64 MiB zone with 65536 buckets can store about 2 million IPv4 entries, or 1 million IPv6 entries** (or any mix of the two).
 
 When the zone runs out of memory, the oldest half of whitelists are removed. Requests coming from removed addresses will be shown a challenge page again, even if you haven't set `shapow_whitelist_duration` or a `shapow_whitelist_count`.
 
@@ -271,7 +271,7 @@ You can also improve memory efficiency by disabling the `shapow_whitelist_count`
 	If you use a custom HTML file, you can also load resources from an absolute path and avoid this altogether, but make sure they're on the same [origin](https://developer.mozilla.org/en-US/docs/Glossary/Origin) to comply with the Content-Security-Policy rules!
 - The default challenge script uses [SubtleCrypto](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto), which is only available in secure (HTTPS) contexts. To make SHAPOW work over HTTP, you will need to find an alternative.
 - The request address is used directly, meaning this module won't work for servers behind reverse proxies, because Nginx sees a different client address. Supporting different means of distinguishing users (such as from a variable like `$proxy_add_x_forwarded_for`) is currently not supported and would be difficult to implement efficiently. Let me know if you need this functionality, and I'll try to work something out. Patches are also welcome :).
-- Nginx's uses fixed-size buffers for response data, which means each resource file has to be small enough to fit. This appears to be 2MiB, but the exact value doesn't seem to be documented anywhere, and there doesn't seem to be any way to read it programmatically. Worse yet, the buffer also stores the response head and headers, which are affected by other modules and configuration. SHAPOW limits each resource to 1.9MiB, but you should check that the resources are being served properly if you're near that limit.
+- Nginx's uses fixed-size buffers for response data, which means each resource file has to be small enough to fit. This appears to be 2 MiB, but the exact value doesn't seem to be documented anywhere, and there doesn't seem to be any way to read it programmatically. Worse yet, the buffer also stores the response head and headers, which are affected by other modules and configuration. SHAPOW limits each resource to 1.9 MiB, but you should check that the resources are being served properly if you're near that limit.
 
 ## Mirrors
 - https://git.zajc.tel/shapow.git
