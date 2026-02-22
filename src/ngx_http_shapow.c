@@ -321,7 +321,12 @@ ngx_module_t ngx_http_shapow_module = {
 /* ===================================================
  * utilities
  =================================================== */
-static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, ngx_str_t *name, u_char **dest, ssize_t *size) {
+static void ngx_http_shapow_close_file_checked(ngx_conf_t *cf, const ngx_file_t *file) {
+	if (ngx_close_file(file->fd) == NGX_FILE_ERROR)
+		ngx_conf_log_error(NGX_LOG_ALERT, cf, ngx_errno, ngx_close_file_n " \"%V\" failed", &file->name);
+}
+
+static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, const ngx_str_t *name, u_char **dest, ssize_t *size) {
 	ngx_file_t file = {0};
 	file.name = *name;
 	file.log = cf->log;
@@ -329,40 +334,44 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, ngx_str_t *name,
 	file.fd = ngx_open_file(file.name.data, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
 	if (file.fd == NGX_INVALID_FILE) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, ngx_errno, ngx_open_file_n " \"%V\" failed", name);
+		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	if (ngx_fd_info(file.fd, &file.info) == NGX_FILE_ERROR) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, ngx_errno, ngx_fd_info_n " \"%V\" failed", name);
+		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	*size = ngx_file_size(&file.info);
 	if (*size > 1992294 /* 1.9 MiB */) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Resource file \"%V\" is too large, the limit is 1.9 MiB", name);
+		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	*dest = ngx_pnalloc(cf->pool, *size);
 	if (*dest == NULL) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Out of memory when reading file \"%V\"", name);
+		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	ssize_t read = ngx_read_file(&file, *dest, *size, 0);
 	if (read == NGX_ERROR) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, ngx_errno, ngx_read_file_n " \"%V\" failed", name);
+		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 
 	} else if (read != *size) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, ngx_read_file_n " \"%V\" returned only %z bytes instead of %z", name,
 				read, *size);
+		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
-	if (ngx_close_file(file.fd) == NGX_FILE_ERROR)
-		ngx_conf_log_error(NGX_LOG_ALERT, cf, ngx_errno, ngx_close_file_n " \"%V\" failed", name);
-
+	ngx_http_shapow_close_file_checked(cf, &file);
 	return NGX_OK;
 }
 
