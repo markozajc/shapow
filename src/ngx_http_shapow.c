@@ -125,7 +125,7 @@ typedef struct ngx_http_shapow_node6_s ngx_http_shapow_node6_t;
 typedef struct {
 	uint32_t next_ordinal;
 	uint32_t last_prune_ordinal;
-	ngx_uint_t bucket_count;
+	ngx_int_t bucket_count;
 
 	// Part of the challenge is random to prevent generating solutions in advance. The random number is regenerated
 	// every time tables are pruned (or whenever Nginx is restarted).
@@ -144,7 +144,7 @@ typedef struct {
 	ngx_slab_pool_t *shpool;
 	ngx_http_shapow_shctx_t *sh;
 	time_t epoch;
-	ngx_uint_t conf_bucket_count;
+	ngx_int_t conf_bucket_count; // has to be signed because ngx_atoi reads that
 
 	// Makes worst-case hash attacks even more difficult to pull off.
 	ngx_uint_t hash_seed;
@@ -343,7 +343,7 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, ngx_str_t *name,
 		return NGX_ERROR;
 	}
 
-	*dest = ngx_palloc(cf->pool, *size);
+	*dest = ngx_pnalloc(cf->pool, *size);
 	if (*dest == NULL) {
 		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Out of memory when reading file \"%V\"", name);
 		return NGX_ERROR;
@@ -465,6 +465,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	if (prev->enabled && prev->challenge_html_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_html_path, &conf->challenge_html_path)) {
 		conf->challenge_html = prev->challenge_html;
+		conf->challenge_html_size = prev->challenge_html_size;
 
 	} else if (ngx_http_shapow_read_file_into(cf, &conf->challenge_html_path, &conf->challenge_html,
 			&conf->challenge_html_size) != NGX_OK) {
@@ -478,6 +479,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	} else if (prev->enabled && prev->challenge_css_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_css_path, &conf->challenge_css_path)) {
 		conf->challenge_css = prev->challenge_css;
+		conf->challenge_css_size = prev->challenge_css_size;
 
 	} else if (ngx_http_shapow_read_file_into(cf, &conf->challenge_css_path, &conf->challenge_css,
 			&conf->challenge_css_size) != NGX_OK) {
@@ -491,6 +493,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	} else if (prev->enabled && prev->challenge_js_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_js_path, &conf->challenge_js_path)) {
 		conf->challenge_js = prev->challenge_js;
+		conf->challenge_js_size = prev->challenge_js_size;
 
 	} else if (ngx_http_shapow_read_file_into(cf, &conf->challenge_js_path, &conf->challenge_js,
 			&conf->challenge_js_size) != NGX_OK) {
@@ -504,6 +507,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	} else if (prev->enabled && prev->challenge_worker_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_worker_path, &conf->challenge_worker_path)) {
 		conf->challenge_worker = prev->challenge_worker;
+		conf->challenge_worker_size = prev->challenge_worker_size;
 
 	} else if (ngx_http_shapow_read_file_into(cf, &conf->challenge_worker_path, &conf->challenge_worker,
 			&conf->challenge_worker_size) != NGX_OK) {
@@ -570,12 +574,12 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 			ctx->sh->last_prune_ordinal = 0;
 
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
-			for (size_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
+			for (ngx_int_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node4_t, ctx->shpool, ctx->sh->table4[bucket]);
 			ngx_slab_free_locked(ctx->shpool, ctx->sh->table4);
 #endif
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
-			for (size_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
+			for (ngx_int_t bucket = 0; bucket < octx->conf_bucket_count; ++bucket)
 				ngx_http_shapow_destroy_bucket(ngx_http_shapow_node6_t, ctx->shpool, ctx->sh->table6[bucket]);
 			ngx_slab_free_locked(ctx->shpool, ctx->sh->table6);
 #endif
@@ -597,7 +601,7 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	// initialize the shared zone
 	ngx_shmtx_lock(&ctx->shpool->mutex);
 
-	ctx->sh = ngx_slab_alloc_locked(ctx->shpool, sizeof(ngx_http_shapow_shctx_t));
+	ctx->sh = ngx_slab_calloc_locked(ctx->shpool, sizeof(ngx_http_shapow_shctx_t));
 	/* set by calloc:
 	 *     conf->last_prune_ordinal = 0
 	 *     conf->next_ordinal = 0
@@ -611,7 +615,7 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	// initialize misc variables
 	ctx->epoch = ngx_time();
 
-	if(generate_random_challenge(ctx) != NGX_OK) {
+	if (generate_random_challenge(ctx) != NGX_OK) {
 		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_ERROR;
 	}
@@ -668,7 +672,7 @@ static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *
 	}
 
 	ctx->conf_bucket_count = ngx_atoi(value[3].data, value[3].len);
-	if (ctx->conf_bucket_count <= 0) {
+	if (ctx->conf_bucket_count == NGX_ERROR || ctx->conf_bucket_count <= 0) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid bucket count \"%V\"", &value[3]);
 		return NGX_CONF_ERROR ;
 	}
@@ -731,7 +735,7 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 		ngx_memset(addr, '0', sizeof(addr));
 	}
 
-	u_char *buf = ngx_palloc(r->pool, NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN);
+	u_char *buf = ngx_pnalloc(r->pool, NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN);
 	if (buf == NULL) {
 		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
 				"SHAPOW: out of memory when allocating a challenge settings buffer");
@@ -863,7 +867,7 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 	return 1;
 }
 
-static ngx_uint_t ngx_http_shapow_get_address_bucket_id(const ngx_http_shapow_ctx_t *ctx, const struct sockaddr *sa) {
+static ngx_uint_t ngx_http_shapow_get_address_hash(const ngx_http_shapow_ctx_t *ctx, const struct sockaddr *sa) {
 	uint32_t hash; // NOSONAR initialized right after
 	ngx_crc32_init(hash);
 	ngx_crc32_update(&hash, (u_char*) &ctx->hash_seed, sizeof(ctx->hash_seed)); // NOSONAR can't pass const
@@ -879,7 +883,7 @@ static ngx_uint_t ngx_http_shapow_get_address_bucket_id(const ngx_http_shapow_ct
 	// for non-INET sockaddrs are already ignored by the handler
 
 	ngx_crc32_final(hash);
-	return hash % ctx->sh->bucket_count;
+	return hash;
 }
 
 static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_shapow_ctx_t *ctx, ngx_uint_t bucket_id,
@@ -937,7 +941,7 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 	ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW zone %V: current node ordinal is %ui, pruning nodes <= %ui",
 			&conf->zone_name, (ngx_uint_t ) ctx->sh->next_ordinal, (ngx_uint_t ) prune_below);
 
-	for (size_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {
+	for (ngx_int_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		ngx_http_shapow_prune_old_whitelists_for_bucket(ngx_http_shapow_node4_t, ctx->shpool,
 				ctx->sh->table4[bucket_id], prune_below)
@@ -951,9 +955,10 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 
 static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, const ngx_http_shapow_loc_conf_t *conf,
 												ngx_http_shapow_ctx_t *ctx, const struct sockaddr *sa) {
-	ngx_uint_t bucket_id = ngx_http_shapow_get_address_bucket_id(ctx, sa);
+	ngx_uint_t hash = ngx_http_shapow_get_address_hash(ctx, sa);
 
 	ngx_shmtx_lock(&ctx->shpool->mutex);
+	ngx_uint_t bucket_id = hash % ctx->sh->bucket_count;
 	ngx_http_shapow_node_t *data = ngx_http_shapow_lookup_address(ctx, bucket_id, sa);
 
 	if (data == NULL) {
@@ -1025,7 +1030,7 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 			return NGX_ERROR;
 
 		// remove challenge_response from the URL so it's not read by other modules/directives
-		u_char *resp_arg_start = challenge_response - sizeof(NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG);
+		const u_char *resp_arg_start = challenge_response - sizeof(NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG);
 		size_t resp_arg_len = sizeof(NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG)
 				+ NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH * 2;
 
@@ -1042,17 +1047,27 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 			r->args.data += resp_arg_len + 1 /* '&' */;
 
 		} else {
-			ngx_memmove(resp_arg_start, resp_arg_start + resp_arg_len + 1, trailing_len - 1);
+			u_char *args = ngx_pnalloc(r->pool, leading_len + trailing_len - 1);
+			if (args == NULL) {
+				ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+						"shapow: Out of memory when allocating new args buffer");
+				return NGX_ERROR;
+			}
+
+			ngx_memcpy(args, r->args.data, leading_len);
+			ngx_memcpy(args + leading_len, r->args.data + leading_len + resp_arg_len + 1, trailing_len - 1);
+
+			r->args.data = args;
 			r->args.len = leading_len + trailing_len - 1;
 		}
 
 		return NGX_DECLINED;
 
 	} else {
+		ngx_uint_t hash = ngx_http_shapow_get_address_hash(ctx, sa);
+
 		ngx_shmtx_lock(&ctx->shpool->mutex);
-		// locking a little wasteful, but it prevents a data race when freeing stale nodes
-		ngx_http_shapow_node_t *data = ngx_http_shapow_lookup_address(ctx,
-				ngx_http_shapow_get_address_bucket_id(ctx, sa), sa);
+		ngx_http_shapow_node_t *data = ngx_http_shapow_lookup_address(ctx, hash % ctx->sh->bucket_count, sa);
 
 		// node is not whitelisted
 		if (data == NULL) {
@@ -1163,9 +1178,9 @@ static ngx_int_t ngx_http_shapow_pass_set_var(ngx_http_request_t *r, ngx_http_va
 
 static ngx_int_t ngx_http_shapow_add_variables(ngx_conf_t *cf) {
 	ngx_http_variable_t *var = ngx_http_add_variable(cf, &ngx_http_shapow_pass, NGX_HTTP_VAR_NOCACHEABLE);
-	var->get_handler = ngx_http_shapow_pass_set_var;
 	if (var == NULL)
 		return NGX_ERROR;
+	var->get_handler = ngx_http_shapow_pass_set_var;
 
 	ngx_int_t index = ngx_http_get_variable_index(cf, &ngx_http_shapow_pass);
 	if (index == NGX_ERROR)
