@@ -1,3 +1,15 @@
+libnginx-mod-http-shapow (1.1) stable; urgency=high
+
+  * Fix a severe bug that could lead to bad memory reads due to asynchronous
+    request handling
+  * Fix a severe bug that prevented table pruning after ordinal overflow
+  * Fix many bugs that could cause issues (including memory corruption) during
+    or after a reload
+  * Fix many other bugs and restrict potentially unsafe or problematic
+    configuration
+
+ -- Marko Zajc <marko@zajc.tel>  Sun, 22 Feb 2026 03:34:31 +0100
+
 libnginx-mod-http-shapow (1.0) stable; urgency=medium
 
   * Initial release.
