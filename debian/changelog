@@ -1,3 +1,12 @@
+libnginx-mod-http-shapow (1.2) stable; urgency=high
+
+  * Fix a severe regression in module reloading that would lead to unallocated
+    memory access when reloading to a different bucket count
+  * Use better log levels
+  * Fix several smaller issues
+
+ -- Marko Zajc <marko@zajc.tel>  Sun, 22 Feb 2026 16:26:37 +0100
+
 libnginx-mod-http-shapow (1.1) stable; urgency=high
 
   * Fix a severe bug that could lead to bad memory reads due to asynchronous
