@@ -323,7 +323,7 @@ ngx_module_t ngx_http_shapow_module = {
  =================================================== */
 static void ngx_http_shapow_close_file_checked(ngx_conf_t *cf, const ngx_file_t *file) {
 	if (ngx_close_file(file->fd) == NGX_FILE_ERROR)
-		ngx_conf_log_error(NGX_LOG_ALERT, cf, ngx_errno, ngx_close_file_n " \"%V\" failed", &file->name);
+		ngx_conf_log_error(NGX_LOG_ERR, cf, ngx_errno, ngx_close_file_n " \"%V\" failed", &file->name);
 }
 
 static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, const ngx_str_t *name, u_char **dest, ssize_t *size) {
@@ -334,38 +334,37 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, const ngx_str_t 
 	file.fd = ngx_open_file(file.name.data, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
 	if (file.fd == NGX_INVALID_FILE) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, ngx_errno, ngx_open_file_n " \"%V\" failed", name);
-		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	if (ngx_fd_info(file.fd, &file.info) == NGX_FILE_ERROR) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, ngx_errno, ngx_fd_info_n " \"%V\" failed", name);
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, ngx_errno, ngx_fd_info_n " \"%V\" failed", name);
 		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	*size = ngx_file_size(&file.info);
 	if (*size > 1992294 /* 1.9 MiB */) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Resource file \"%V\" is too large, the limit is 1.9 MiB", name);
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "Resource file \"%V\" is too large, the limit is 1.9 MiB", name);
 		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	*dest = ngx_pnalloc(cf->pool, *size);
 	if (*dest == NULL) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "Out of memory when reading file \"%V\"", name);
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "Out of memory when reading file \"%V\"", name);
 		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
 	ssize_t read = ngx_read_file(&file, *dest, *size, 0);
 	if (read == NGX_ERROR) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, ngx_errno, ngx_read_file_n " \"%V\" failed", name);
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, ngx_errno, ngx_read_file_n " \"%V\" failed", name);
 		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 
 	} else if (read != *size) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, ngx_read_file_n " \"%V\" returned only %z bytes instead of %z", name,
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, ngx_read_file_n " \"%V\" returned only %z bytes instead of %z", name,
 				read, *size);
 		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
@@ -458,12 +457,12 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 		return NGX_OK;
 
 	if (conf->zone_name.len == 0) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "shapow_zone directive is required when SHAPOW is enabled");
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow_zone directive is required when SHAPOW is enabled");
 		return NGX_CONF_ERROR ;
 	}
 
 	if (conf->difficulty > SHA256_DIGEST_LENGTH * 8) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "shapow_difficulty must be between 0 and %d",
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow_difficulty must be between 0 and %d",
 				(SHA256_DIGEST_LENGTH) * 8);
 		return NGX_CONF_ERROR ;
 	}
@@ -657,16 +656,10 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	// initialize misc variables
 	ctx->epoch = ngx_time();
 
-	if (generate_random_challenge(ctx) != NGX_OK) {
-		ngx_shmtx_unlock(&ctx->shpool->mutex);
-		return NGX_ERROR;
-	}
+	generate_random_challenge(ctx);
 
-	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed)) {
-		ngx_log_error(NGX_LOG_EMERG, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes for hash_seed");
-		ngx_shmtx_unlock(&ctx->shpool->mutex);
-		return NGX_ERROR;
-	}
+	if (getrandom((char*) &ctx->hash_seed, sizeof(ctx->hash_seed), 0) != sizeof(ctx->hash_seed))
+		ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes for hash_seed");
 
 	// initialize zone tables
 	if (ngx_http_shapow_init_zone_tables(ctx) != NGX_OK) {
@@ -722,7 +715,7 @@ static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *
 static ngx_int_t ngx_http_shapow_serve_buffer(ngx_http_request_t *r, u_char *buf, ssize_t size) {
 	ngx_buf_t *ngx_buf = ngx_calloc_buf(r->pool);
 	if (ngx_buf == NULL) {
-		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_buf_t");
+		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_buf_t");
 		return NGX_ERROR;
 	}
 
@@ -733,7 +726,7 @@ static ngx_int_t ngx_http_shapow_serve_buffer(ngx_http_request_t *r, u_char *buf
 
 	ngx_chain_t *chain_link = ngx_alloc_chain_link(r->pool);
 	if (chain_link == NULL) {
-		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_chain_t");
+		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_chain_t");
 		return NGX_ERROR;
 	}
 
@@ -770,7 +763,7 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 
 	u_char *buf = ngx_pnalloc(r->pool, NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN);
 	if (buf == NULL) {
-		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
 				"SHAPOW: out of memory when allocating a challenge settings buffer");
 		return NGX_ERROR;
 	}
@@ -784,7 +777,7 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 			random_challenge);
 
 	if (end >= buf + NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN) {
-		ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "SHAPOW: challenge settings buffer is too small");
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "SHAPOW: challenge settings buffer is too small");
 		return NGX_ERROR;
 	}
 
@@ -874,7 +867,7 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 		return true; // not checking at all for non-INET addresses
 
 	// check response time
-	// I'm not sure how/when nginx's time cache is updated, but it's probably not safe to assume it's the same for all
+	// I'm not sure how/when Nginx's time cache is updated, but it's probably not safe to assume it's the same for all
 	// workers, so I'm allowing the possibility that resp_time is higher than ngx_time()
 	int64_t resp_time; // NOSONAR initialized right after
 	memcpy(&resp_time, data + sizeof(struct in6_addr), sizeof(resp_time));
@@ -892,7 +885,7 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 	resp_random_challenge = be64toh(resp_random_challenge);
 
 	ngx_shmtx_lock(&ctx->shpool->mutex);
-	ngx_uint_t random_challenge = ctx->sh->random_challenge;
+	uint64_t random_challenge = ctx->sh->random_challenge;
 	ngx_shmtx_unlock(&ctx->shpool->mutex);
 	if (resp_random_challenge != random_challenge)
 		return false;
@@ -975,8 +968,9 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 		ctx->sh->last_prune_ordinal = 0;
 	}
 
-	ngx_log_error(NGX_LOG_DEBUG, ngx_cycle->log, 0, "SHAPOW zone %V: current node ordinal is %uD, pruning nodes <= %uD",
-			&conf->zone_name, ctx->sh->next_ordinal, prune_below);
+	ngx_log_error(NGX_LOG_NOTICE, ngx_cycle->log, 0,
+			"SHAPOW zone %V: current node ordinal is %uD, pruning nodes <= %uD", &conf->zone_name,
+			ctx->sh->next_ordinal, prune_below);
 
 	for (ngx_int_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
@@ -1019,7 +1013,8 @@ static ngx_int_t ngx_http_shapow_upsert_address(const ngx_http_request_t *r, con
 			data->ordinal = ctx->sh->next_ordinal++;
 
 		} else {
-			ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0, "SHAPOW zone \"%V\" is not big enough",
+			ngx_log_error(NGX_LOG_CRIT, r->connection->log, 0,
+					"SHAPOW zone \"%V\" did not reclaim enough memory after a prune, it's likely not big enough",
 					&conf->zone_name);
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
 			return NGX_ERROR;
@@ -1086,8 +1081,8 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 		} else {
 			u_char *args = ngx_pnalloc(r->pool, leading_len + trailing_len - 1);
 			if (args == NULL) {
-				ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-						"shapow: Out of memory when allocating new args buffer");
+				ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
+						"SHAPOW: out of memory when allocating a new args buffer");
 				return NGX_ERROR;
 			}
 
@@ -1114,10 +1109,13 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 		// whitelist has expired (has more uses than whitelist_count)
-		ngx_uint_t count = conf->whitelist_count;
-		if (count && (data->use_count++ > count)) { // NOSONAR short-circuited increment is intentional
-			ngx_shmtx_unlock(&ctx->shpool->mutex);
-			return NGX_OK;
+		if (conf->whitelist_count) {
+			if (data->use_count > conf->whitelist_count) {
+				ngx_shmtx_unlock(&ctx->shpool->mutex);
+				return NGX_OK;
+			} else {
+				++data->use_count;
+			}
 		}
 #endif
 
@@ -1230,7 +1228,7 @@ static ngx_int_t ngx_http_shapow_add_variables(ngx_conf_t *cf) {
 
 static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 	const ngx_variable_value_t *pass_var = &r->variables[ngx_http_shapow_pass_index];
-	if (pass_var == NULL || pass_var->data != ngx_http_shapow_pass_data_no.data)
+	if (pass_var->data != ngx_http_shapow_pass_data_no.data)
 		return ngx_http_next_header_filter(r);
 
 	static const ngx_str_t header_csp_key = ngx_string("Content-Security-Policy");

@@ -1,5 +1,5 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Source: https://git.zajc.tel/libnginx-mod-http-shapow.git
+Source: https://git.zajc.tel/shapow.git
 
 Files: *
 Copyright: 2026, Marko Zajc <marko@zajc.tel>

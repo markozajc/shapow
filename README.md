@@ -27,7 +27,7 @@ Users of other releases or architectures can very easily compile the package wit
 2. Clone the repository
 
 	```bash
-	git clone https://git.zajc.tel/libnginx-mod-http-shapow.git && cd libnginx-mod-http-shapow
+	git clone https://git.zajc.tel/shapow.git && cd libnginx-mod-http-shapow
 	```
 
 3. (optional) Adjust build configuration in `src/config.h`.

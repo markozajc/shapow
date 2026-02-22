@@ -1,6 +1,6 @@
 //SPDX-License-Identifier: AGPL-3.0-only
 /*
- * libnginx-mod-http-shapow - proof-of-work captcha module for nginx
+ * SHAPOW - Nginx module to keep bots out with a proof-of-work challenge
  * Copyright (C) 2026 Marko Zajc
  *
  * This program is free software: you can redistribute it and/or modify
