@@ -1170,26 +1170,20 @@ static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
 			"script-src 'self' 'unsafe-inline' 'unsafe-hashes' 'sha256-5sBVMf3rpfzmovinEBS+zknIk18/JTKQhrIdGhsXVoA='");
 	// the hash corresponds to the inline <script> in challenge.html's <head>
 
+	// disable all existing Content-Security-Policy headers
 	ngx_list_part_t *part = &r->headers_out.headers.part;
-	ngx_table_elt_t *header = part->elts;
-
-	for (ngx_uint_t i = 0;; ++i) {
-		if (i >= part->nelts) {
-			if (part->next == NULL)
-				break;
-
-			part = part->next;
-			header = part->elts;
-
-			i = 0;
+	do {
+		ngx_table_elt_t *headers = part->elts;
+		for (size_t i = 0; i < part->nelts; ++i) {
+			ngx_str_t *key = &headers[i].key;
+			if (key->len == header_csp_key.len && ngx_strncasecmp(key->data, header_csp_key.data, key->len) == 0)
+				headers[i].hash = 0;
 		}
+		part = part->next;
+	} while (part != NULL);
 
-		ngx_str_t *key = &header[i].key;
-		if (key->len == header_csp_key.len && ngx_strncasecmp(key->data, header_csp_key.data, key->len) == 0)
-			header[i].hash = 0;
-	}
-
-	header = ngx_list_push(&r->headers_out.headers);
+	// insert our CSP header
+	ngx_table_elt_t *header = ngx_list_push(&r->headers_out.headers);
 	if (header == NULL)
 		return NGX_ERROR;
 	header->hash = 1;
