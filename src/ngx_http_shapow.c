@@ -528,19 +528,31 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 }
 
 static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
-	ctx->sh->bucket_count = ctx->conf_bucket_count;
-
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
-	ctx->sh->table4 = ngx_slab_calloc_locked(ctx->shpool, ctx->conf_bucket_count * sizeof(ngx_http_shapow_node4_t*));
-	if (ctx->sh->table4 == NULL)
+	ngx_http_shapow_node4_t **table4 = ngx_slab_calloc_locked(ctx->shpool,
+			ctx->conf_bucket_count * sizeof(ngx_http_shapow_node4_t*));
+	if (table4 == NULL)
 		return NGX_ERROR;
 #endif
 
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
-	ctx->sh->table6 = ngx_slab_calloc_locked(ctx->shpool, ctx->conf_bucket_count * sizeof(ngx_http_shapow_node6_t*));
-	if (ctx->sh->table6 == NULL)
-		return NGX_ERROR;
+	ngx_http_shapow_node6_t **table6 = ngx_slab_calloc_locked(ctx->shpool,
+			ctx->conf_bucket_count * sizeof(ngx_http_shapow_node6_t*));
+	if (table6 == NULL) {
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
+		ngx_slab_free_locked(ctx->shpool, table4);
 #endif
+		return NGX_ERROR;
+	}
+#endif
+
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
+	ctx->sh->table4 = table4;
+#endif
+#ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
+	ctx->sh->table6 = table6;
+#endif
+	ctx->sh->bucket_count = ctx->conf_bucket_count;
 
 	return NGX_OK;
 }
@@ -565,11 +577,16 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 		ctx->sh = octx->sh;
 		ctx->shpool = octx->shpool;
 
-		if (octx->conf_bucket_count == ctx->conf_bucket_count) {
-			return NGX_OK;
-
-		} else {
+		if (octx->conf_bucket_count != ctx->conf_bucket_count) {
 			ngx_shmtx_lock(&ctx->shpool->mutex);
+
+			// try allocating new tables (if this fails, old ones are left intact)
+			ngx_int_t rc = ngx_http_shapow_init_zone_tables(ctx);
+			if (rc != NGX_OK) {
+				ngx_shmtx_unlock(&ctx->shpool->mutex);
+				return rc;
+			}
+
 			ctx->sh->next_ordinal = 0;
 			ctx->sh->last_prune_ordinal = 0;
 
@@ -584,11 +601,10 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 			ngx_slab_free_locked(ctx->shpool, ctx->sh->table6);
 #endif
 
-			ngx_int_t rc = ngx_http_shapow_init_zone_tables(ctx);
-
 			ngx_shmtx_unlock(&ctx->shpool->mutex);
-			return rc;
 		}
+
+		return NGX_OK;
 	}
 
 	ctx->shpool = (ngx_slab_pool_t*) shm_zone->shm.addr;
@@ -598,9 +614,19 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 		return NGX_OK;
 	}
 
-	// initialize the shared zone
 	ngx_shmtx_lock(&ctx->shpool->mutex);
 
+	// initialize logging
+	size_t len = sizeof(" in SHAPOW zone \"\"") + shm_zone->shm.name.len;
+
+	ctx->shpool->log_ctx = ngx_slab_alloc_locked(ctx->shpool, len);
+	if (ctx->shpool->log_ctx == NULL) {
+		ngx_shmtx_unlock(&ctx->shpool->mutex);
+		return NGX_ERROR;
+	}
+	ngx_sprintf(ctx->shpool->log_ctx, " in SHAPOW zone \"%V\"%Z", &shm_zone->shm.name);
+
+	// initialize the shared zone
 	ctx->sh = ngx_slab_calloc_locked(ctx->shpool, sizeof(ngx_http_shapow_shctx_t));
 	/* set by calloc:
 	 *     conf->last_prune_ordinal = 0
@@ -632,17 +658,8 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 		return NGX_ERROR;
 	}
 
-	// initialize logging
-	size_t len = sizeof(" in SHAPOW zone \"\"") + shm_zone->shm.name.len;
-
-	ctx->shpool->log_ctx = ngx_slab_alloc_locked(ctx->shpool, len);
-	ngx_shmtx_unlock(&ctx->shpool->mutex);
-	if (ctx->shpool->log_ctx == NULL)
-		return NGX_ERROR;
-
-	ngx_sprintf(ctx->shpool->log_ctx, " in SHAPOW zone \"%V\"%Z", &shm_zone->shm.name);
-
 	ctx->shpool->log_nomem = 0;
+	ngx_shmtx_unlock(&ctx->shpool->mutex);
 
 	return NGX_OK;
 }
