@@ -41,9 +41,9 @@ typedef enum {
 
 #define NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT \
 	"const nonceLength = " NGX_HTTP_SHAPOW_STR(NGX_HTTP_SHAPOW_NONCE_LENGTH)";\n" \
-	"const difficulty = %i;\n" \
-	"const serverData = '%V%016xi%016xi';\n" /* serverData length must be a multiple of 4 bytes (8 characters in hex)
-												due to constraints in Uint32Array */
+	"const difficulty = %ui;\n" \
+	"const serverData = '%V%016uxL%016xL';\n" /* serverData length must be a multiple of 4 bytes (8 characters in hex)
+												 due to constraints in Uint32Array */
 
 // 256 bytes is arbitrarily decided, but it should be more than plenty for this format
 #define NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN 256
@@ -454,8 +454,8 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	}
 
 	if (conf->difficulty > SHA256_DIGEST_LENGTH * 8) {
-		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "shapow_difficulty must be between 0 and %ui",
-				(ngx_uint_t) SHA256_DIGEST_LENGTH * 8);
+		ngx_conf_log_error(NGX_LOG_CRIT, cf, 0, "shapow_difficulty must be between 0 and %d",
+				(SHA256_DIGEST_LENGTH) * 8);
 		return NGX_CONF_ERROR ;
 	}
 
@@ -745,7 +745,7 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 	const struct sockaddr *sa = r->connection->sockaddr;
 	u_char addr[sizeof(struct in6_addr) * 2 /* hex */]; // NOSONAR initialized right after
 	ngx_str_t addr_str = {sizeof(addr), addr};
-	// using %ix formats will reorder bytes and make everything unnecessarily difficult, so we use our own hex encoder
+	// using %*x formats will reorder bytes and make everything unnecessarily difficult, so we use our own hex encoder
 	if (sa->sa_family == AF_INET) {
 		const struct sockaddr_in *sa_in = (const struct sockaddr_in*) sa;
 		ngx_http_shapow_fill_hex((const u_char*) &sa_in->sin_addr.s_addr, addr, sizeof(in_addr_t));
@@ -767,11 +767,11 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 	}
 
 	ngx_shmtx_lock(&ctx->shpool->mutex);
-	ngx_uint_t random_challenge = ctx->sh->random_challenge;
+	uint64_t random_challenge = ctx->sh->random_challenge;
 	ngx_shmtx_unlock(&ctx->shpool->mutex);
 
 	const u_char *end = ngx_snprintf(buf, NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN,
-			(NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT), conf->difficulty, &addr_str, (ngx_int_t) ngx_time(), // NOSONAR cast isn't redundant
+			(NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT), conf->difficulty, &addr_str, (int64_t) ngx_time(), // NOSONAR cast isn't redundant
 			random_challenge);
 
 	if (end >= buf + NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN) {
@@ -966,8 +966,8 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 		ctx->sh->last_prune_ordinal = 0;
 	}
 
-	ngx_log_error(NGX_LOG_DEBUG, ngx_cycle->log, 0, "SHAPOW zone %V: current node ordinal is %ui, pruning nodes <= %ui",
-			&conf->zone_name, (ngx_uint_t ) ctx->sh->next_ordinal, (ngx_uint_t ) prune_below);
+	ngx_log_error(NGX_LOG_DEBUG, ngx_cycle->log, 0, "SHAPOW zone %V: current node ordinal is %uD, pruning nodes <= %uD",
+			&conf->zone_name, ctx->sh->next_ordinal, prune_below);
 
 	for (ngx_int_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4

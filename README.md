@@ -14,7 +14,9 @@ See it in action on the [SHAPOW demo page](https://zajc.tel/shapow-demo). You st
 ## Installation
 
 ### Debian
-Ready-made packages for Debian stable are available at https://files.zajc.tel/public/builds/shapow. Users of other releases can very easily compile the package with the instructions below.
+Ready-made packages for Debian stable amd64 are available at https://files.zajc.tel/public/builds/shapow. If you get an error about a missing `nginx-abi-*` package when installing, you're have an incompatible version of Nginx installed.
+
+Users of other releases or architectures can very easily compile the package with the instructions below.
 
 1. Install build dependencies
 
