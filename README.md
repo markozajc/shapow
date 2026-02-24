@@ -96,9 +96,9 @@ SHAPOW returns the challenge response by adding a  `shapow-response` querystring
 shapow_zone_add main 64M 65536; # see Zone size for info
 
 map $http_user_agent $shapow_enable { # permit some good bots (beware of User-Agent spoofing!)
-    "~CCBot"      n;
-    "~Googlebot"  n;
-    default       y;
+    "~CCBot"      off;
+    "~Googlebot"  off;
+    default       on;
 }
 
 server {
@@ -117,9 +117,7 @@ server {
     }
 
     location /expensive {
-        if ($shapow_enable = y) {
-            shapow on;
-        }
+        shapow $shapow_enable;
         shapow_whitelist_count 1000; # user can make 1k requests
         shapow_whitelist_duration 1h; # user stays whitelisted for an hour
 
@@ -136,9 +134,11 @@ server {
 This configuration only shows the challenge page on paths starting with `/expensive`, but not those ending with `.jpg`, `.png`, `.js`, or `.css`. It will also not show the challenge page if the User-Agent header contains `CCBot` or `Googlebot`. The difficulty is a little lower than the default, and whitelists are valid for 1000 requests or one hour, whichever happens first.
 
 ### `shapow`
-Syntax: **`shapow`**` on | off`  
+Syntax: <code><b>shapow</b> <i>flag</i></code>  
 Default: `shapow off`  
-Context: http, server, location, if
+Context: http, server, location
+
+*`flag`* is either `on` or `off`, or a variable that resolves to one of these values.
 
 Enables or disables SHAPOW. If enabled,
 - requests to paths ending with `/shapow_internal/challenge.css`, `/shapow_internal/challenge.js`, `/shapow_internal/challenge-worker.js` will be served their respective resource files
@@ -150,39 +150,39 @@ Enables or disables SHAPOW. If enabled,
 If disabled, all requests are passed through, including those to resource file or setting paths.
 
 ### `shapow_zone`
-Syntax: **`shapow_zone`***` key`*  
+Syntax: <code><b>shapow_zone</b> <i>name</i></code>  
 Default: -  
-Context: http, server, location, if
+Context: http, server, location
 
-Sets the shared memory zone to be used, identified by `key`. This directive is mandatory if `shapow on` is set, and the zone must be created in the http context with `shapow_zone_add`.
+Sets the shared memory zone to be used, identified by *`name`*. This directive is mandatory if `shapow on` is set, and the zone must be created in the http context with `shapow_zone_add`.
 
 ### `shapow_difficulty`
-Syntax: **`shapow_difficulty`***` number`*  
+Syntax: <code><b>shapow_difficulty</b> <i>number</i></code>  
 Default: `shapow_difficulty 12`  
-Context: http, server, location, if
+Context: http, server, location
 
 Sets the challenge difficulty to be used, expressed as the *`number`* of leading bits that must be zero. Higher values means more computation required to solve the challenge, which in turn potentially means more bots deterred, but also longer wait times for users. Values in the 10-14 range are recommended, and you are encouraged to run the challenge a few times (especially on low-end or underpowered devices such as smartphones and laptops!) to see how it affects the wait time.
 
 Keep in mind that while the default challenge page provides a progress bar based on the iteration count, the challenge works more like a lottery; wait times tend to average out on some number, but there will be outliers.
 
 ### `shapow_whitelist_count`
-Syntax: **`shapow_whitelist_count`***` number`*  
+Syntax: <code><b>shapow_whitelist_count</b> <i>number</i></code>  
 Default: `shapow_whitelist_count 0`  
-Context: http, server, location, if
+Context: http, server, location
 
 Sets the whitelist usage count limit. When an address is whitelisted, it is allowed to make *`number`* requests to locations using the same `shapow_zone` before having to solve the challenge again. If two locations share the same `shapow_zone` but use a different `shapow_whitelist_count`, the address can remain whitelisted for one location but not the other.
 
 ### `shapow_whitelist_duration`
-Syntax: **`shapow_whitelist_duration`***` time`*  
+Syntax: <code><b>shapow_whitelist_duration</b> <i>time</i></code>  
 Default: `shapow_whitelist_duration 0s`  
-Context: http, server, location, if
+Context: http, server, location
 
 Sets the whitelist duration limit. When an address is whitelisted, it is allowed to make requests to locations using the same `shapow_zone` until *`time`* runs out before having to solve the challenge again. If two locations share the same `shapow_zone` but use a different `shapow_whitelist_duration`, the address can remain whitelisted for one location but not the other.
 
 ### `shapow_challenge_html_path`
-Syntax: **`shapow_challenge_html_path`***` path`*  
+Syntax: <code><b>shapow_challenge_html_path</b> <i>path</i></code>  
 Default: `shapow_challenge_html_path /usr/share/libnginx-mod-http-shapow/challenge.html`  
-Context: http, server, location, if
+Context: http, server, location
 
 Sets the challenge HTML file served to non-whitelisted addresses. The file is read from *`path`* on module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
@@ -199,39 +199,39 @@ Note that the `unsafe-inline` directive is ignored by browsers that support `uns
 [Browsers tend to handle relative paths unintuitively](https://stackoverflow.com/q/31111257), including those to load resources, and this inline script works around that behaviour. If you wish to use it in a custom challenge HTML file, you have to copy it verbatim to prevent changes to the hash. Other scripts and resources can't be included inline without recompiling the module with a different CSP header.
 
 ### `shapow_challenge_css_path`
-Syntax: **`shapow_challenge_css_path`***` path`*` | ''`  
+Syntax: <code><b>shapow_challenge_css_path</b> <i>path</i> | ''</code>  
 Default: `shapow_challenge_css_path /usr/share/libnginx-mod-http-shapow/challenge.css`  
-Context: http, server, location, if
+Context: http, server, location
 
 Sets the challenge CSS file served to all requests for paths ending with `/shapow_internal/challenge.css`. The file is read from *`path`* at module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
 If *`path`* is an empty string (`shapow_challenge_css_path ''`), no file will be loaded and requests to `/shapow_internal/challenge.css` will not be treated specially.
 
 ### `shapow_challenge_js_path`
-Syntax: **`shapow_challenge_js_path`***` path`*` | ''`  
+Syntax: <code><b>shapow_challenge_js_path</b> <i>path</i> | ''</code>  
 Default: `shapow_challenge_js_path /usr/share/libnginx-mod-http-shapow/challenge.js`  
-Context: http, server, location, if
+Context: http, server, location
 
 Sets the challenge script file served to all requests for paths ending with `/shapow_internal/challenge.js`. The file is read from *`path`* at module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
 If *`path`* is an empty string (`shapow_challenge_js_path ''`), no file will be loaded and requests to `/shapow_internal/challenge.js` will not be treated specially.
 
 ### `shapow_challenge_worker_path`
-Syntax: **`shapow_challenge_worker_path`***` path`*` | ''`  
+Syntax: <code><b>shapow_challenge_worker_path</b> <i>path</i> | ''</code>  
 Default: `shapow_challenge_worker_path /usr/share/libnginx-mod-http-shapow/challenge-worker.js`  
-Context: http, server, location, if
+Context: http, server, location
 
 Sets the challenge worker script file served to all requests for paths ending with `/shapow_internal/challenge-worker.js`. The file is read from *`path`* at module load and kept in memory until reload or restart. *`path`* is not relative to `root` or `alias` and should be absolute.
 
 If *`path`* is an empty string (`shapow_challenge_worker_path ''`), no file will be loaded and requests to `/shapow_internal/challenge-worker.js` will not be treated specially.
 
 ### `shapow_zone_add`
-Syntax: **`shapow_zone_add`***` key size number`*  
+Syntax: <code><b>shapow_zone_add</b> <i>name</i> <i>size</i> <i>number</i></code>  
 Default: -  
 Context: http
 
 Creates a shared memory zone for `shapow_zone`. The zone stores the table of whitelisted addresses, as well as some other shared data. One zone can be used by multiple `shapow_zone` directives.
-- *`key`* sets the zone's key, and should not be empty
+- *`name`* sets the zone's name, and should not be empty
 - *`size`* sets size, see the Zone size section for guidance
 - *`number`* sets the number of hash buckets, see the Zone size section for guidance
 
@@ -249,7 +249,7 @@ When the zone runs out of memory, the oldest half of whitelists are removed. Req
 You can also improve memory efficiency by disabling the `shapow_whitelist_count` and/or `shapow_whitelist_duration` directives in `src/config.h` and recompiling the module. Disabling either will halve space occupied by IPv6 entries, and disabling both will halve the space occupied by IPv4 entries. Disabling both does not further reduce space used by IPv4 entries because Nginx' memory allocator rounds sizes up to the nearest power of two.
 
 ## Quirks
-- Due to how Nginx handles request phases, the module might not trigger at all for certain directives (so far I've only seen this happen with `return`). Moving the handler to the rewrite phase (`NGX_HTTP_REWRITE_PHASE`) fixes this behaviour, but means directives can't be used in if statements, again due to how phases work.
+- Due to how Nginx handles request phases, the module might not trigger at all for certain directives (so far I've only seen this happen with `return`). Moving the handler to the rewrite phase (`NGX_HTTP_REWRITE_PHASE`) fixes this behaviour, but means variables can't be used reliably in the `shapow` directive.
 - SHAPOW's HTML uses relative paths to load resources, but with advanced or very specific `location` setups this might not work as expected. To work around this, you can create a catch-all location just for `/shapow_internal/`:
 	```nginx
 	server {

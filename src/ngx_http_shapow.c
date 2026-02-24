@@ -151,7 +151,9 @@ typedef struct {
 } ngx_http_shapow_ctx_t;
 
 typedef struct {
-	ngx_flag_t enabled;
+	ngx_flag_t enabled_flag;
+	bool has_enabled_cv;
+	ngx_http_complex_value_t enabled_cv;
 	ngx_str_t zone_name;
 	ngx_uint_t difficulty;
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
@@ -190,6 +192,8 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 
 static ngx_int_t ngx_http_shapow_handler(ngx_http_request_t *r);
 
+static char* ngx_http_shapow_enable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
 static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static ngx_str_t ngx_http_shapow_pass = ngx_string("shapow_pass");
@@ -211,15 +215,15 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_FLAG,
-		ngx_conf_set_flag_slot,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+		ngx_http_shapow_enable,
 		NGX_HTTP_LOC_CONF_OFFSET,
-		offsetof(ngx_http_shapow_loc_conf_t, enabled),
-		NULL
+		0,
+		0
 	},
 	{
 		ngx_string("shapow_zone"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, zone_name),
@@ -227,7 +231,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_difficulty"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_num_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, difficulty),
@@ -236,7 +240,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	{
 		ngx_string("shapow_whitelist_count"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_num_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, whitelist_count),
@@ -246,7 +250,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_DURATION
 	{
 		ngx_string("shapow_whitelist_duration"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_sec_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, whitelist_duration),
@@ -255,7 +259,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 #endif
 	{
 		ngx_string("shapow_challenge_html_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_html_path),
@@ -263,7 +267,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_challenge_css_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_css_path),
@@ -271,7 +275,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_challenge_js_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_js_path),
@@ -279,7 +283,7 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	},
 	{
 		ngx_string("shapow_challenge_worker_path"),
-		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 		ngx_conf_set_str_slot,
 		NGX_HTTP_LOC_CONF_OFFSET,
 		offsetof(ngx_http_shapow_loc_conf_t, challenge_worker_path),
@@ -407,6 +411,8 @@ static void* ngx_http_shapow_create_loc_conf(ngx_conf_t *cf) {
 
 	/* NOSONAR
 	 * set by pcalloc:
+	 *     conf->enabled_cv = { 0 };
+	 *     conf->has_enabled_cv = false;
 	 *     conf->zone_name = { 0, NULL };
 	 *     conf->challenge_html_path = { 0, NULL };
 	 *     conf->challenge_css_path = { 0, NULL };
@@ -414,12 +420,16 @@ static void* ngx_http_shapow_create_loc_conf(ngx_conf_t *cf) {
 	 *     conf->challenge_worker_path = { 0, NULL };
 	 *     conf->zone = NULL;
 	 *     conf->challenge_html = NULL;
+	 *     conf->challenge_html_size = 0;
 	 *     conf->challenge_css = NULL;
+	 *     conf->challenge_css_size = 0;
 	 *     conf->challenge_js = NULL;
+	 *     conf->challenge_js_size = 0;
 	 *     conf->challenge_worker = NULL;
+	 *     conf->challenge_worker_size = 0;
 	 */
 
-	conf->enabled = NGX_CONF_UNSET;
+	conf->enabled_flag = NGX_CONF_UNSET;
 	conf->difficulty = NGX_CONF_UNSET_UINT;
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	conf->whitelist_count = NGX_CONF_UNSET_UINT;
@@ -435,7 +445,11 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	ngx_http_shapow_loc_conf_t *prev = parent;
 	ngx_http_shapow_loc_conf_t *conf = child;
 
-	ngx_conf_merge_value(conf->enabled, prev->enabled, 0)
+	if (!conf->has_enabled_cv && conf->enabled_flag == NGX_CONF_UNSET) {
+		conf->enabled_cv = prev->enabled_cv;
+		conf->has_enabled_cv = prev->has_enabled_cv;
+		conf->enabled_flag = prev->enabled_flag;
+	}
 	ngx_conf_merge_str_value(conf->zone_name, prev->zone_name, "")
 	ngx_conf_merge_uint_value(conf->difficulty, prev->difficulty, 12)
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
@@ -453,7 +467,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	ngx_conf_merge_str_value(conf->challenge_worker_path, prev->challenge_worker_path,
 			NGX_HTTP_SHAPOW_RESOURCE_ROOT "/challenge-worker.js")
 
-	if (!conf->enabled)
+	if (!conf->has_enabled_cv && conf->enabled_flag != 1)
 		return NGX_OK;
 
 	if (conf->zone_name.len == 0) {
@@ -463,14 +477,15 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 
 	if (conf->difficulty > SHA256_DIGEST_LENGTH * 8) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow_difficulty must be between 0 and %d",
-				(SHA256_DIGEST_LENGTH) * 8);
+				(SHA256_DIGEST_LENGTH) * 8); // NOSONAR parens aren't redundant
 		return NGX_CONF_ERROR ;
 	}
 
 	// use file data from prev if they use the same paths and prev is enabled, otherwise read the file (for all 4 files)
+	bool prev_enabled = prev->has_enabled_cv || prev->enabled_flag == 1;
 
 	// challenge_html
-	if (prev->enabled && prev->challenge_html_path.len > 0
+	if (prev_enabled && prev->challenge_html_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_html_path, &conf->challenge_html_path)) {
 		conf->challenge_html = prev->challenge_html;
 		conf->challenge_html_size = prev->challenge_html_size;
@@ -484,7 +499,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	if (conf->challenge_css_path.len == 0) {
 		conf->challenge_css = NULL;
 
-	} else if (prev->enabled && prev->challenge_css_path.len > 0
+	} else if (prev_enabled && prev->challenge_css_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_css_path, &conf->challenge_css_path)) {
 		conf->challenge_css = prev->challenge_css;
 		conf->challenge_css_size = prev->challenge_css_size;
@@ -498,7 +513,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	if (conf->challenge_js_path.len == 0) {
 		conf->challenge_js = NULL;
 
-	} else if (prev->enabled && prev->challenge_js_path.len > 0
+	} else if (prev_enabled && prev->challenge_js_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_js_path, &conf->challenge_js_path)) {
 		conf->challenge_js = prev->challenge_js;
 		conf->challenge_js_size = prev->challenge_js_size;
@@ -512,7 +527,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	if (conf->challenge_worker_path.len == 0) {
 		conf->challenge_worker = NULL;
 
-	} else if (prev->enabled && prev->challenge_worker_path.len > 0
+	} else if (prev_enabled && prev->challenge_worker_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_worker_path, &conf->challenge_worker_path)) {
 		conf->challenge_worker = prev->challenge_worker;
 		conf->challenge_worker_size = prev->challenge_worker_size;
@@ -523,7 +538,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	}
 
 	// map shared memory
-	if (prev->enabled && prev->zone_name.len > 0 && ngx_http_shapow_str_eq(&prev->zone_name, &conf->zone_name)) {
+	if (prev_enabled && prev->zone_name.len > 0 && ngx_http_shapow_str_eq(&prev->zone_name, &conf->zone_name)) {
 		conf->zone = prev->zone;
 
 	} else {
@@ -671,6 +686,41 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 	ngx_shmtx_unlock(&ctx->shpool->mutex);
 
 	return NGX_OK;
+}
+
+static char* ngx_http_shapow_enable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf_raw) { // NOSONAR can't make it const
+	(void) (cmd); // unused
+
+	ngx_http_shapow_loc_conf_t *conf = conf_raw;
+
+	ngx_str_t *value = cf->args->elts;
+	if (ngx_strcasecmp(value[1].data, (u_char*) "on") == 0) { // NOSONAR cast and array access are ok
+		conf->enabled_flag = 1;
+		conf->has_enabled_cv = false;
+
+	} else if (ngx_strcasecmp(value[1].data, (u_char*) "off") == 0) { // NOSONAR cast is ok
+		conf->enabled_flag = 0;
+		conf->has_enabled_cv = false;
+
+	} else {
+		ngx_http_compile_complex_value_t ccv = {0};
+		ccv.cf = cf;
+		ccv.value = &value[1];
+		ccv.complex_value = &conf->enabled_cv;
+
+		if (ngx_http_compile_complex_value(&ccv) != NGX_OK)
+			return NGX_CONF_ERROR ;
+
+		if (conf->enabled_cv.lengths == NULL) {
+			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow value should be \"on\" or \"off\", but was \"%V\"",
+					&value[1]);
+			return NGX_CONF_ERROR ;
+		}
+
+		conf->has_enabled_cv = true;
+	}
+
+	return NGX_CONF_OK;
 }
 
 static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *data) {
@@ -1134,8 +1184,30 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 }
 
 static ngx_int_t ngx_http_shapow_handler(ngx_http_request_t *r) { // NOSONAR
-	const ngx_http_shapow_loc_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_shapow_module);
-	if (!conf->enabled)
+	ngx_http_shapow_loc_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_shapow_module);
+	bool enabled; // NOSONAR initialized right after
+	if (conf->has_enabled_cv) {
+		ngx_str_t res; // NOSONAR initialized right afters
+		if (ngx_http_complex_value(r, &conf->enabled_cv, &res) != NGX_OK)
+			return NGX_HTTP_INTERNAL_SERVER_ERROR;
+
+		if (res.len == 2 && ngx_strncasecmp(res.data, (u_char*) "on", 2) == 0) { // NOSONAR cast and array access are ok
+			enabled = true;
+
+		} else if (res.len == 3 && ngx_strncasecmp(res.data, (u_char*) "off", 3) == 0) { // NOSONAR cast is ok
+			enabled = false;
+
+		} else {
+			ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+					"SHAPOW: shapow value should be \"on\" or \"off\", but was \"%V\"", &res);
+			return NGX_HTTP_INTERNAL_SERVER_ERROR;
+		}
+
+	} else {
+		enabled = conf->enabled_flag == 1;
+	}
+
+	if (!enabled)
 		return NGX_DECLINED;
 
 	// internal redirects will run our handler multiple times, clearing module ctx between runs. variables are a good
