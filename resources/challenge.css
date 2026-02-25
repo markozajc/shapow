@@ -119,7 +119,7 @@ body.done {
 
 	#spinner {
 		float: right;
-		padding-left: 0.5ex;
+		margin-left: 1ex;
 	}
 }
 
