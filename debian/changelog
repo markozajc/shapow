@@ -1,3 +1,14 @@
+libnginx-mod-http-shapow (2.0) stable; urgency=medium
+
+  * Do not allow the usage of SHAPOW directives in if statements, since they
+    were (predictably) not working as expected
+  * Introduce variable support for the `shapow` directive as an alternative to
+    if statements 
+  * Add polyfills for some recent JavaScript APIs to improve browser support
+  * Fix several styling issues on the challenge page
+
+ -- Marko Zajc <marko@zajc.tel>  Wed, 25 Feb 2026 17:36:10 +0100
+
 libnginx-mod-http-shapow (1.2) stable; urgency=high
 
   * Fix a severe regression in module reloading that would lead to unallocated
