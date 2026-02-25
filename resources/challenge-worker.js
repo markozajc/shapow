@@ -38,6 +38,37 @@ async function solve(difficulty, serverData, nonceLength) {
 	return [iter, data];
 }
 
+
+if (!Uint8Array.prototype.setFromHex) {
+	Uint8Array.prototype.setFromHex = function(string) {
+		if (string.length % 2 != 0)
+			throw SyntaxError("hex-string must have an even number of characters");
+		len = Math.min(this.length * 2, string.length);
+		for (let i = 0; i < len; i++) {
+			const digit = parseInt(string[i], 16);
+			if (isNaN(digit))
+				throw SyntaxError(`'${string[i]}' is not a valid hex-digit`);
+			if (i % 2 == 0)
+				this[i / 2] = digit << 4;
+			else
+				this[(i-1) / 2] |= digit;
+		}
+		return {read: len, written: len / 2};
+	}
+}
+
+if (!Uint8Array.prototype.toHex) {
+	Uint8Array.prototype.toHex = function() {
+		result = "";
+		for (let i = 0; i < this.length; i++) {
+			if (this[i] < 0x10)
+				result += "0";
+			result += this[i].toString(16);
+		}
+		return result;
+	}
+}
+
 if (crypto.subtle) {
 	onmessage = m => {
 		solve(m.data[0], m.data[1], m.data[2]).then(result => {
