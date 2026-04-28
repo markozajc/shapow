@@ -42,7 +42,7 @@ typedef enum {
 #define NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT \
 	"const nonceLength = " NGX_HTTP_SHAPOW_STR(NGX_HTTP_SHAPOW_NONCE_LENGTH)";\n" \
 	"const difficulty = %ui;\n" \
-	"const serverData = '%V%016uxL%016xL';\n" /* serverData length must be a multiple of 4 bytes (8 characters in hex)
+	"const serverData = '%V%016xL%016uxL';\n" /* serverData length must be a multiple of 4 bytes (8 characters in hex)
 												 due to constraints in Uint32Array */
 
 // 256 bytes is arbitrarily decided, but it should be more than plenty for this format
