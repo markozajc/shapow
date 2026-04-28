@@ -1,18 +1,27 @@
+libnginx-mod-http-shapow (2.1) stable; urgency=medium
+
+  * Fix "output on closed stream" error logs when dealing with header-only
+    (for example HEAD) requests.
+  * Fix a few other minor issues
+
+ -- Marko Zajc <marko@zajc.tel>  Wed, 29 Apr 2026 00:10:30 +0200
+
 libnginx-mod-http-shapow (2.0) stable; urgency=medium
 
-  * Do not allow the usage of SHAPOW directives in if statements, since they
-    were (predictably) not working as expected
-  * Introduce variable support for the `shapow` directive as an alternative to
-    if statements 
-  * Add polyfills for some recent JavaScript APIs to improve browser support
+  * Do not allow the usage of SHAPOW directives in if statements,
+    since they were (predictably) not working as expected
+  * Introduce variable support for the `shapow` directive as an
+    alternative to if statements
+  * Add polyfills for some recent JavaScript APIs to improve browser
+    support
   * Fix several styling issues on the challenge page
 
  -- Marko Zajc <marko@zajc.tel>  Wed, 25 Feb 2026 17:36:10 +0100
 
 libnginx-mod-http-shapow (1.2) stable; urgency=high
 
-  * Fix a severe regression in module reloading that would lead to unallocated
-    memory access when reloading to a different bucket count
+  * Fix a severe regression in module reloading that would lead to
+    unallocated memory access when reloading to a different bucket count
   * Use better log levels
   * Fix several smaller issues
 
@@ -20,11 +29,11 @@ libnginx-mod-http-shapow (1.2) stable; urgency=high
 
 libnginx-mod-http-shapow (1.1) stable; urgency=high
 
-  * Fix a severe bug that could lead to bad memory reads due to asynchronous
-    request handling
+  * Fix a severe bug that could lead to bad memory reads due to
+    asynchronous request handling
   * Fix a severe bug that prevented table pruning after ordinal overflow
-  * Fix many bugs that could cause issues (including memory corruption) during
-    or after a reload
+  * Fix many bugs that could cause issues (including memory corruption)
+    during or after a reload
   * Fix many other bugs and restrict potentially unsafe or problematic
     configuration
 
@@ -32,6 +41,6 @@ libnginx-mod-http-shapow (1.1) stable; urgency=high
 
 libnginx-mod-http-shapow (1.0) stable; urgency=medium
 
-  * Initial release.
+  * Initial release
 
  -- Marko Zajc <marko@zajc.tel>  Wed, 21 Feb 2026 03:34:50 +0100
