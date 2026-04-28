@@ -125,7 +125,7 @@ typedef struct ngx_http_shapow_node6_s ngx_http_shapow_node6_t;
 typedef struct {
 	uint32_t next_ordinal;
 	uint32_t last_prune_ordinal;
-	ngx_int_t bucket_count;
+	ngx_uint_t bucket_count;
 
 	// Part of the challenge is random to prevent generating solutions in advance. The random number is regenerated
 	// every time tables are pruned (or whenever Nginx is restarted).
@@ -354,14 +354,14 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, const ngx_str_t 
 		return NGX_ERROR;
 	}
 
-	*dest = ngx_pnalloc(cf->pool, *size);
+	*dest = ngx_pnalloc(cf->pool, (size_t) *size);
 	if (*dest == NULL) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "Out of memory when reading file \"%V\"", name);
 		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;
 	}
 
-	ssize_t read = ngx_read_file(&file, *dest, *size, 0);
+	ssize_t read = ngx_read_file(&file, *dest, (size_t) *size, 0);
 	if (read == NGX_ERROR) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, ngx_errno, ngx_read_file_n " \"%V\" failed", name);
 		ngx_http_shapow_close_file_checked(cf, &file);
@@ -554,14 +554,14 @@ static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
 	// allocate new tables
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	ngx_http_shapow_node4_t **table4 = ngx_slab_calloc_locked(ctx->shpool,
-			ctx->conf_bucket_count * sizeof(ngx_http_shapow_node4_t*));
+			(size_t) ctx->conf_bucket_count * sizeof(ngx_http_shapow_node4_t*));
 	if (table4 == NULL)
 		return NGX_ERROR;
 #endif
 
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 	ngx_http_shapow_node6_t **table6 = ngx_slab_calloc_locked(ctx->shpool,
-			ctx->conf_bucket_count * sizeof(ngx_http_shapow_node6_t*));
+			(size_t) ctx->conf_bucket_count * sizeof(ngx_http_shapow_node6_t*));
 	if (table6 == NULL) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		ngx_slab_free_locked(ctx->shpool, table4);
@@ -573,14 +573,14 @@ static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
 	// free old tables
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 	if (ctx->sh->table4) {
-		for (ngx_int_t bucket = 0; bucket < ctx->sh->bucket_count; ++bucket)
+		for (ngx_uint_t bucket = 0; bucket < ctx->sh->bucket_count; ++bucket)
 			ngx_http_shapow_destroy_bucket(ngx_http_shapow_node4_t, ctx->shpool, ctx->sh->table4[bucket]);
 		ngx_slab_free_locked(ctx->shpool, ctx->sh->table4);
 	}
 #endif
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 	if (ctx->sh->table6) {
-		for (ngx_int_t bucket = 0; bucket < ctx->sh->bucket_count; ++bucket)
+		for (ngx_uint_t bucket = 0; bucket < ctx->sh->bucket_count; ++bucket)
 			ngx_http_shapow_destroy_bucket(ngx_http_shapow_node6_t, ctx->shpool, ctx->sh->table6[bucket]);
 		ngx_slab_free_locked(ctx->shpool, ctx->sh->table6);
 	}
@@ -593,18 +593,16 @@ static ngx_int_t ngx_http_shapow_init_zone_tables(ngx_http_shapow_ctx_t *ctx) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV6
 	ctx->sh->table6 = table6;
 #endif
-	ctx->sh->bucket_count = ctx->conf_bucket_count;
+	ctx->sh->bucket_count = (ngx_uint_t) ctx->conf_bucket_count;
 
 	return NGX_OK;
 }
 
-static ngx_int_t generate_random_challenge(ngx_http_shapow_ctx_t *ctx) {
+static void generate_random_challenge(ngx_http_shapow_ctx_t *ctx) {
 	if (getrandom((char*) &ctx->sh->random_challenge, sizeof(ctx->sh->random_challenge), 0)
 			!= sizeof(ctx->sh->random_challenge)) {
 		ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "SHAPOW: failed to generate random bytes for random_challenge");
-		return NGX_ERROR;
 	}
-	return NGX_OK;
 }
 
 static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
@@ -654,7 +652,7 @@ static ngx_int_t ngx_http_shapow_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 		ngx_shmtx_unlock(&ctx->shpool->mutex);
 		return NGX_ERROR;
 	}
-	ngx_sprintf(ctx->shpool->log_ctx, " in SHAPOW zone \"%V\"%Z", &shm_zone->shm.name);
+	(void) ngx_sprintf(ctx->shpool->log_ctx, " in SHAPOW zone \"%V\"%Z", &shm_zone->shm.name);
 
 	// initialize the shared zone
 	ctx->sh = ngx_slab_calloc_locked(ctx->shpool, sizeof(ngx_http_shapow_shctx_t));
@@ -738,7 +736,7 @@ static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *
 		return NGX_CONF_ERROR ;
 	}
 
-	ngx_shm_zone_t *shm_zone = ngx_shared_memory_add(cf, &value[1], size, &ngx_http_shapow_module);
+	ngx_shm_zone_t *shm_zone = ngx_shared_memory_add(cf, &value[1], (size_t) size, &ngx_http_shapow_module);
 	if (shm_zone == NULL)
 		return NGX_CONF_ERROR ;
 
@@ -852,7 +850,7 @@ static u_char* ngx_http_shapow_find_challenge_response(const ngx_str_t *args) {
 	}
 
 	start += sizeof(NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG); // skip "shapow-response="
-	size_t len = args->len - (start - args->data); // length between start (our pointer) and end of args
+	size_t len = args->len - (size_t) (start - args->data); // length between start (our pointer) and end of args
 
 	bool valid = (len == NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH * 2)
 			|| (len > NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH * 2
@@ -864,7 +862,7 @@ static u_char* ngx_http_shapow_find_challenge_response(const ngx_str_t *args) {
 
 static bool ngx_http_shapow_check_response_difficulty(const u_char *challenge_response, ngx_uint_t difficulty) {
 	u_char hash[SHA256_DIGEST_LENGTH]; // NOSONAR initialized right after
-	SHA256(challenge_response, NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH, hash);
+	(void) SHA256(challenge_response, NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH, hash);
 
 	size_t i = 0;
 	while (difficulty > 8) {
@@ -920,8 +918,8 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 	// I'm not sure how/when Nginx's time cache is updated, but it's probably not safe to assume it's the same for all
 	// workers, so I'm allowing the possibility that resp_time is higher than ngx_time()
 	int64_t resp_time; // NOSONAR initialized right after
-	memcpy(&resp_time, data + sizeof(struct in6_addr), sizeof(resp_time));
-	resp_time = be64toh(resp_time);
+	(void) memcpy(&resp_time, data + sizeof(struct in6_addr), sizeof(resp_time));
+	resp_time = (int64_t) be64toh(resp_time);
 
 	time_t now = ngx_time();
 	if (resp_time > now + NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_MAX_TIME_DIFFERENCE
@@ -931,7 +929,8 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 
 	// check random challenge
 	uint64_t resp_random_challenge; // NOSONAR initialized right after
-	memcpy(&resp_random_challenge, data + sizeof(struct in6_addr) + sizeof(int64_t), sizeof(resp_random_challenge));
+	(void) memcpy(&resp_random_challenge, data + sizeof(struct in6_addr) + sizeof(int64_t),
+			sizeof(resp_random_challenge));
 	resp_random_challenge = be64toh(resp_random_challenge);
 
 	ngx_shmtx_lock(&ctx->shpool->mutex);
@@ -1002,7 +1001,7 @@ static ngx_http_shapow_node_t* ngx_http_shapow_lookup_address(const ngx_http_sha
 }
 
 static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_t *conf, ngx_http_shapow_ctx_t *ctx) {
-	generate_random_challenge(ctx); // not checking return because it's not critical that this succeeds
+	generate_random_challenge(ctx);
 
 	uint32_t prune_below; // NOSONAR initialized right after
 	// overflows happen every 4 billion whitelist inserts (assuming we don't restart Nginx in that time!), so more
@@ -1014,7 +1013,7 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 
 	} else {
 		// next_ordinal did overflow
-		prune_below = -1; // prune all buckets
+		prune_below = UINT32_MAX; // prune all buckets
 		ctx->sh->last_prune_ordinal = 0;
 	}
 
@@ -1022,7 +1021,7 @@ static void ngx_http_shapow_prune_old_whitelists(const ngx_http_shapow_loc_conf_
 			"SHAPOW zone %V: current node ordinal is %uD, pruning nodes <= %uD", &conf->zone_name,
 			ctx->sh->next_ordinal, prune_below);
 
-	for (ngx_int_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {
+	for (ngx_uint_t bucket_id = 0; bucket_id < ctx->sh->bucket_count; ++bucket_id) {
 #ifdef NGX_HTTP_SHAPOW_ENABLE_IPV4
 		ngx_http_shapow_prune_old_whitelists_for_bucket(ngx_http_shapow_node4_t, ctx->shpool,
 				ctx->sh->table4[bucket_id], prune_below)
@@ -1116,7 +1115,7 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 		size_t resp_arg_len = sizeof(NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG)
 				+ NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH * 2;
 
-		size_t leading_len = resp_arg_start - r->args.data;
+		size_t leading_len = (size_t) (resp_arg_start - r->args.data);
 		size_t trailing_len = r->args.len - leading_len - resp_arg_len;
 		if (leading_len == 0 && trailing_len == 0) {
 			r->args.len = 0;
@@ -1293,7 +1292,7 @@ static ngx_int_t ngx_http_shapow_add_variables(ngx_conf_t *cf) {
 	if (index == NGX_ERROR)
 		return NGX_ERROR;
 
-	ngx_http_shapow_pass_index = index;
+	ngx_http_shapow_pass_index = (ngx_uint_t) index;
 
 	return NGX_OK;
 }
