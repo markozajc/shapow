@@ -1,7 +1,14 @@
+libnginx-mod-http-shapow (2.2) stable; urgency=medium
+
+  * Remove the support e-mail address from the challenge page
+  * Detect and report refresh loops on the challenge page
+
+ -- Marko Zajc <marko@zajc.tel>  Wed, 19 May 2026 14:09:35 +0200
+
 libnginx-mod-http-shapow (2.1) stable; urgency=medium
 
   * Fix "output on closed stream" error logs when dealing with header-only
-    (for example HEAD) requests.
+    (for example HEAD) requests
   * Fix a few other minor issues
 
  -- Marko Zajc <marko@zajc.tel>  Wed, 29 Apr 2026 00:10:30 +0200
