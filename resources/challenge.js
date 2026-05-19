@@ -23,8 +23,8 @@ function estimateIterations(difficulty) {
 	else if (difficulty === 18) return 547000;
 	else if (difficulty === 19) return 1301000;
 	else if (difficulty === 20) return 1907000;
-	else return -50 + 20 * difficulty + Math.pow(2.1, difficulty); // rough curve, but you should not increase the
-																   // difficulty past 20
+	else return -50 + 20 * difficulty + Math.pow(2.1, difficulty); /* rough curve, but you should not increase the
+																	  difficulty past 20 */
 }
 
 
@@ -34,40 +34,48 @@ try {
 	document.body.classList.add("started");
 
 	logElement.appendChild(createLine(
-		`Solving challenge with difficulty ${difficulty}, ${serverData.length/2} bytes of server data`));
+		`Solving challenge with difficulty ${difficulty}, ${serverData.length / 2} bytes of server data`));
 
-	const iterLine = createLine(`Waiting for worker...`);
-	logElement.appendChild(iterLine);
+	if (Date.now() - (sessionStorage?.getItem("shapow-last-solve-time") ?? 0) < 1000 /* 1 second */) {
+		document.body.classList.add("error");
+		logElement.appendChild(createLine("Server-side error, avoiding refresh loop. Contact site's administrators."));
 
-	const estimateIter = estimateIterations(difficulty);
-	const worker = new Worker("shapow_internal/challenge-worker.js");
-	worker.onmessage = m => {
-		if (m.data[0] === 0) { // update iteration
-			progressElement.value = Math.min(0.95, m.data[1] / estimateIter);
-			iterLine.textContent = `Iteration ${m.data[1]}: ${m.data[2]} (unsolved)`;
+	} else {
+		const iterLine = createLine(`Waiting for worker...`);
+		logElement.appendChild(iterLine);
 
-		} else if (m.data[0] === 1) { // error
-			progressElement.value = 1;
-			document.body.classList.add("error");
-			logElement.appendChild(createLine(`Error in worker: ${m.data[1]}`));
+		const estimateIter = estimateIterations(difficulty);
+		const worker = new Worker("shapow_internal/challenge-worker.js");
+		worker.onmessage = m => {
+			if (m.data[0] === 0) { // update iteration
+				progressElement.value = Math.min(0.95, m.data[1] / estimateIter);
+				iterLine.textContent = `Iteration ${m.data[1]}: ${m.data[2]} (unsolved)`;
 
-		} else if (m.data[0] === 2) { // solved
-			progressElement.value = 1;
-			document.body.classList.add("done");
-			iterLine.textContent =
-				`Iteration ${m.data[1]}: ${m.data[2].substr(m.data[2].length - nonceLength * 2)} (solved)`;
-			logElement.appendChild(createLine(`Success! You will be redirected shortly.`));
+			} else if (m.data[0] === 1) { // error
+				progressElement.value = 1;
+				document.body.classList.add("error");
+				logElement.appendChild(createLine(`Error in worker: ${m.data[1]}`));
 
-			const url = new URL(location.href);
-			url.searchParams.set("shapow-response", m.data[2]);
-			document.location.replace(url.href);
+			} else if (m.data[0] === 2) { // solved
+				progressElement.value = 1;
+				document.body.classList.add("done");
+				iterLine.textContent =
+					`Iteration ${m.data[1]}: ${m.data[2].substr(m.data[2].length - nonceLength * 2)} (solved)`;
+				logElement.appendChild(createLine(`Success! You will be redirected shortly.`));
 
-		} else {
-			console.error(`Unknown message: ${m.data}`);
-		}
-	};
+				const url = new URL(location.href);
+				url.searchParams.set("shapow-response", m.data[2]);
 
-	worker.postMessage([difficulty, serverData, nonceLength]);
+				sessionStorage?.setItem("shapow-last-solve-time", Date.now());
+				document.location.replace(url.href);
+
+			} else {
+				console.error(`Unknown message: ${m.data}`);
+			}
+		};
+
+		worker.postMessage([difficulty, serverData, nonceLength]);
+	}
 
 } catch (e) {
 	console.error(e);
