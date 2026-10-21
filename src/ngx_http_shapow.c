@@ -761,35 +761,39 @@ static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *
  * request handler
  =================================================== */
 static ngx_int_t ngx_http_shapow_serve_buffer(ngx_http_request_t *r, u_char *buf, ssize_t size) {
-	r->headers_out.content_length_n = size;
-
-	if (ngx_http_send_header(r) == NGX_ERROR)
-		return NGX_ERROR;
-
-	ngx_chain_t *chain_link = NULL;
-	if (!r->header_only) { // do not allocate a body for header-only requests
-		ngx_buf_t *ngx_buf = ngx_calloc_buf(r->pool);
-		if (ngx_buf == NULL) {
-			ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_buf_t");
-			return NGX_ERROR;
-		}
-
-		ngx_buf->pos = buf;
-		ngx_buf->last = buf + size;
-		ngx_buf->memory = 1;
-		ngx_buf->last_buf = 1;
-
-		chain_link = ngx_alloc_chain_link(r->pool);
-		if (chain_link == NULL) {
-			ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_chain_t");
-			return NGX_ERROR;
-		}
-
-		chain_link->buf = ngx_buf;
-		chain_link->next = NULL;
+	ngx_int_t rc = ngx_http_discard_request_body(r);
+	if (rc == NGX_ERROR || rc > NGX_OK) {
+		ngx_http_finalize_request(r, rc);
+		return NGX_DONE;
 	}
 
-	ngx_http_finalize_request(r, chain_link ? ngx_http_output_filter(r, chain_link) : NGX_OK);
+	rc = ngx_http_send_header(r);
+	if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+		ngx_http_finalize_request(r, rc);
+		return NGX_DONE;
+	}
+
+	ngx_buf_t *ngx_buf = ngx_calloc_buf(r->pool);
+	if (ngx_buf == NULL) {
+		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_buf_t");
+		return NGX_ERROR;
+	}
+
+	ngx_buf->pos = buf;
+	ngx_buf->last = buf + size;
+	ngx_buf->memory = 1;
+	ngx_buf->last_buf = 1;
+
+	ngx_chain_t *chain_link = ngx_alloc_chain_link(r->pool);
+	if (chain_link == NULL) {
+		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_chain_t");
+		return NGX_ERROR;
+	}
+
+	chain_link->buf = ngx_buf;
+	chain_link->next = NULL;
+
+	ngx_http_finalize_request(r, ngx_http_output_filter(r, chain_link));
 	return NGX_DONE;
 }
 
