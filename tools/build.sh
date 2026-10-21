@@ -16,7 +16,7 @@ CONFIG_ARGS="${CONFIG_ARGS} --add-dynamic-module=${MODULE_PATH}";
 echo "$CONFIG_ARGS";
 
 cd "${NGINX_PATH}";
-#bash -c "./configure ${CONFIG_ARGS}"; # you can comment this out in subsequent builds
+bash -c "./configure ${CONFIG_ARGS}"; # you can comment this out in subsequent builds
 make modules -j "$(nproc)";
 
 echo "Load the dynamic module ${NGINX_PATH}/objs/ngx_http_shapow_module.so and restart nginx to install";

@@ -838,6 +838,34 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 		return NGX_ERROR;
 	}
 
+	ngx_table_elt_t *cc;
+	cc = r->headers_out.cache_control;
+
+	if (cc == NULL) {
+		cc = ngx_list_push(&r->headers_out.headers);
+		if (cc == NULL) {
+			ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
+					"SHAPOW: out of memory when allocating the Cache-Control header");
+			return NGX_ERROR;
+		}
+
+		r->headers_out.cache_control = cc;
+		cc->next = NULL;
+
+		cc->hash = 1;
+		ngx_str_set(&cc->key, "Cache-Control");
+
+	} else {
+		for (cc = cc->next; cc; cc = cc->next) {
+			cc->hash = 0;
+		}
+
+		cc = r->headers_out.cache_control;
+		cc->next = NULL;
+	}
+
+	ngx_str_set(&cc->value, "no-store");
+
 	return ngx_http_shapow_serve_buffer(r, buf, end - buf);
 }
 
