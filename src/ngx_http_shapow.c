@@ -450,6 +450,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 		conf->has_enabled_cv = prev->has_enabled_cv;
 		conf->enabled_flag = prev->enabled_flag;
 	}
+
 	ngx_conf_merge_str_value(conf->zone_name, prev->zone_name, "")
 	ngx_conf_merge_uint_value(conf->difficulty, prev->difficulty, 12)
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
@@ -485,7 +486,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	bool prev_enabled = prev->has_enabled_cv || prev->enabled_flag == 1;
 
 	// challenge_html
-	if (prev_enabled && prev->challenge_html_path.len > 0
+	if (prev_enabled && prev->challenge_html && prev->challenge_html_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_html_path, &conf->challenge_html_path)) {
 		conf->challenge_html = prev->challenge_html;
 		conf->challenge_html_size = prev->challenge_html_size;
@@ -499,7 +500,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	if (conf->challenge_css_path.len == 0) {
 		conf->challenge_css = NULL;
 
-	} else if (prev_enabled && prev->challenge_css_path.len > 0
+	} else if (prev_enabled && prev->challenge_css && prev->challenge_css_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_css_path, &conf->challenge_css_path)) {
 		conf->challenge_css = prev->challenge_css;
 		conf->challenge_css_size = prev->challenge_css_size;
@@ -513,7 +514,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	if (conf->challenge_js_path.len == 0) {
 		conf->challenge_js = NULL;
 
-	} else if (prev_enabled && prev->challenge_js_path.len > 0
+	} else if (prev_enabled && prev->challenge_js && prev->challenge_js_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_js_path, &conf->challenge_js_path)) {
 		conf->challenge_js = prev->challenge_js;
 		conf->challenge_js_size = prev->challenge_js_size;
@@ -527,7 +528,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	if (conf->challenge_worker_path.len == 0) {
 		conf->challenge_worker = NULL;
 
-	} else if (prev_enabled && prev->challenge_worker_path.len > 0
+	} else if (prev_enabled && prev->challenge_worker && prev->challenge_worker_path.len > 0
 			&& ngx_http_shapow_str_eq(&prev->challenge_worker_path, &conf->challenge_worker_path)) {
 		conf->challenge_worker = prev->challenge_worker;
 		conf->challenge_worker_size = prev->challenge_worker_size;
@@ -538,7 +539,8 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	}
 
 	// map shared memory
-	if (prev_enabled && prev->zone_name.len > 0 && ngx_http_shapow_str_eq(&prev->zone_name, &conf->zone_name)) {
+	if (prev_enabled && prev->zone && prev->zone_name.len > 0
+			&& ngx_http_shapow_str_eq(&prev->zone_name, &conf->zone_name)) {
 		conf->zone = prev->zone;
 
 	} else {
