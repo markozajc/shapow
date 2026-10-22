@@ -18,9 +18,10 @@
  */
 #include "config.h"
 #include <ngx_http.h>
-#include <endian.h>
-#include <sys/random.h>
 #include <openssl/sha.h>
+#include <endian.h>
+#include <limits.h>
+#include <sys/random.h>
 
 #if __STDC_VERSION__ <= 201710
 typedef enum {
@@ -748,7 +749,8 @@ static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *
 	}
 
 	ctx->conf_bucket_count = ngx_atoi(value[3].data, value[3].len);
-	if (ctx->conf_bucket_count == NGX_ERROR || ctx->conf_bucket_count <= 0) {
+	if (ctx->conf_bucket_count == NGX_ERROR || ctx->conf_bucket_count <= 0
+			|| (size_t) ctx->conf_bucket_count >= SIZE_MAX / sizeof(void*)) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid bucket count \"%V\"", &value[3]);
 		return NGX_CONF_ERROR ;
 	}
