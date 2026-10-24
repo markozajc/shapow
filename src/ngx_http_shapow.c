@@ -812,7 +812,12 @@ static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *
 
 	ssize_t size = ngx_parse_size(&value[2]);
 	if (size == NGX_ERROR) {
-		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid zone size \"%V\"", &value[2]);
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "zone size \"%V\" is too large", &value[2]);
+		return NGX_CONF_ERROR ;
+	}
+
+	if (size < (ssize_t) (8 * ngx_pagesize)) {
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "zone size \"%V\" is too small", &value[2]);
 		return NGX_CONF_ERROR ;
 	}
 
