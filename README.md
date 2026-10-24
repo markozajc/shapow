@@ -257,7 +257,7 @@ When the zone runs out of memory, the oldest half of whitelists are removed. Req
 You can also improve memory efficiency by disabling the `shapow_whitelist_count` and/or `shapow_whitelist_duration` directives in `src/config.h` and recompiling the module. Disabling either will halve space occupied by IPv6 entries, and disabling both will halve the space occupied by IPv4 entries. Disabling both does not further reduce space used by IPv4 entries because Nginx' memory allocator rounds sizes up to the nearest power of two.
 
 ## Quirks
-- Due to how Nginx handles request phases, the module might not trigger at all for certain directives (so far I've only seen this happen with `return`). Moving the handler to the rewrite phase (`NGX_HTTP_REWRITE_PHASE`) fixes this behaviour, but means variables can't be used reliably in the `shapow` directive.
+- Due to how Nginx handles request phases, the module might not trigger at all for certain directives (so far I've only seen this happen with `return`). Moving the handler to the rewrite phase (`NGX_HTTP_REWRITE_PHASE`) fixes this behaviour, but means variables can't reliably be used in the `shapow` and `shapow_difficulty` directives.
 - SHAPOW's HTML uses relative paths to load resources, but with advanced or very specific `location` setups this might not work as expected. To work around this, you can create a catch-all location just for `/shapow_internal/`:
 	```nginx
 	server {

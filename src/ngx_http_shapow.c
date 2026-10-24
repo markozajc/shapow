@@ -868,7 +868,8 @@ static ngx_int_t ngx_http_shapow_serve_buffer(ngx_http_request_t *r, u_char *buf
 	ngx_buf->pos = buf;
 	ngx_buf->last = buf + size;
 	ngx_buf->memory = 1;
-	ngx_buf->last_buf = 1;
+	ngx_buf->last_in_chain = 1;
+	ngx_buf->last_buf = 1; // this should be 0 for subrequests, but we ignore those in the http handler anyway
 
 	ngx_chain_t *chain_link = ngx_alloc_chain_link(r->pool);
 	if (chain_link == NULL) {
@@ -1315,6 +1316,9 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, n
 }
 
 static ngx_int_t ngx_http_shapow_handler(ngx_http_request_t *r) { // NOSONAR
+	if(r != r->main)
+		return ngx_http_next_header_filter(r);
+
 	ngx_http_shapow_loc_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_shapow_module);
 	bool enabled; // NOSONAR initialized right after
 	if (conf->has_enabled_cv) {
@@ -1430,6 +1434,9 @@ static ngx_int_t ngx_http_shapow_add_variables(ngx_conf_t *cf) {
 }
 
 static ngx_int_t ngx_http_shapow_header_filter(ngx_http_request_t *r) {
+	if(r != r->main)
+		return ngx_http_next_header_filter(r);
+
 	const ngx_variable_value_t *pass_var = &r->variables[ngx_http_shapow_pass_index];
 	if (pass_var->data != ngx_http_shapow_pass_data_no.data)
 		return ngx_http_next_header_filter(r);
