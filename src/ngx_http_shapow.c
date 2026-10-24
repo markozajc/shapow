@@ -453,7 +453,7 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 	}
 
 	ngx_conf_merge_str_value(conf->zone_name, prev->zone_name, "")
-	ngx_conf_merge_uint_value(conf->difficulty, prev->difficulty, 12)
+	ngx_conf_merge_uint_value(conf->difficulty, prev->difficulty, 18)
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	ngx_conf_merge_uint_value(conf->whitelist_count, prev->whitelist_count, 0)
 #endif

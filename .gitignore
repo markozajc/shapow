@@ -5,10 +5,6 @@
 /.project
 /compile_commands.json
 
-# used for testing
-/resources/index.html
-/resources/shapow_internal/*
-
 # dpkg-buildpackage
 /debian/.debhelper/
 /debian/debhelper-build-stamp

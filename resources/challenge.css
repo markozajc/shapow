@@ -96,7 +96,7 @@ body.started {
 
 body.error {
 	#spinner {
-		color: sienna;
+		color: red;
 		animation: none;
 	}
 }

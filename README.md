@@ -9,7 +9,7 @@ After completing the challenge, visitors are whitelisted by their IP address, op
 
 Cookies are not required to pass the challenge page, but JavaScript is.
 
-See it in action on the [SHAPOW demo page](https://zajc.tel/shapow-demo). You stay whitelisted for 5 seconds, so make sure to remove the `shapow-response` parameter to see the challenge again. There's also the [high difficulty demo page](https://zajc.tel/shapow-demo-diff25) that uses a much higher difficulty value (25) so you can get a better look at the page.
+See it in action on the [SHAPOW demo page](https://zajc.tel/shapow-demo). You stay whitelisted for 5 seconds, so make sure to remove the `shapow-response` parameter to see the challenge again. There's also the [high difficulty demo page](https://zajc.tel/shapow-demo-diff25) that uses a much higher difficulty value (30) so you can get a better look at the page.
 
 ## Installation
 
@@ -104,7 +104,7 @@ map $http_user_agent $shapow_enable { # permit some good bots (beware of User-Ag
 server {
     # ...
 
-    shapow_difficulty 10;
+    shapow_difficulty 20;
     shapow_zone main;
 
     location / {
@@ -131,7 +131,7 @@ server {
     }
 }
 ```
-This configuration only shows the challenge page on paths starting with `/expensive`, but not those ending with `.jpg`, `.png`, `.js`, or `.css`. It will also not show the challenge page if the User-Agent header contains `CCBot` or `Googlebot`. The difficulty is a little lower than the default, and whitelists are valid for 1000 requests or one hour, whichever happens first.
+This configuration only shows the challenge page on paths starting with `/expensive`, but not those ending with `.jpg`, `.png`, `.js`, or `.css`. It will also not show the challenge page if the User-Agent header contains `CCBot` or `Googlebot`. The difficulty is a little higher than the default, and whitelists are valid for 1000 requests or one hour, whichever happens first.
 
 ### `shapow`
 Syntax: <code><b>shapow</b> <i>flag</i></code>  
@@ -158,7 +158,7 @@ Sets the shared memory zone to be used, identified by *`name`*. This directive i
 
 ### `shapow_difficulty`
 Syntax: <code><b>shapow_difficulty</b> <i>number</i></code>  
-Default: `shapow_difficulty 12`  
+Default: `shapow_difficulty 18`  
 Context: http, server, location
 
 Sets the challenge difficulty to be used, expressed as the *`number`* of leading bits that must be zero. Higher values means more computation required to solve the challenge, which in turn potentially means more bots deterred, but also longer wait times for users. Values in the 10-14 range are recommended, and you are encouraged to run the challenge a few times (especially on low-end or underpowered devices such as smartphones and laptops!) to see how it affects the wait time.
@@ -254,7 +254,7 @@ You can also improve memory efficiency by disabling the `shapow_whitelist_count`
 	```nginx
 	server {
 	    shapow_zone main; # this affects challenge resources, so for this workaround it should be the same for all locations
-	    shapow_difficulty 10; # ditto (or don't set it at all and use the default)
+	    shapow_difficulty 20; # ditto (or don't set it at all and use the default)
 	    # same for shapow_challenge_html_path, shapow_challenge_css_path, shapow_challenge_js_path, and shapow_challenge_worker_path
 
 	    # this location block doesn't cover subdirectories of /exact, so /exact/shapow_internal/* would 404!
@@ -271,7 +271,6 @@ You can also improve memory efficiency by disabling the `shapow_whitelist_count`
 	}
 	```
 	If you use a custom HTML file, you can also load resources from an absolute path and avoid this altogether, but make sure they're on the same [origin](https://developer.mozilla.org/en-US/docs/Glossary/Origin) to comply with the Content-Security-Policy rules!
-- The default challenge script uses [SubtleCrypto](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto), which is only available in secure (HTTPS) contexts. To make SHAPOW work over HTTP, you will need to find an alternative.
 - The request address is used directly, meaning this module won't work for servers behind reverse proxies, because Nginx sees a different client address. Supporting different means of distinguishing users (such as from a variable like `$proxy_add_x_forwarded_for`) is currently not supported and would be difficult to implement efficiently. Let me know if you need this functionality, and I'll try to work something out. Patches are also welcome :).
 - Nginx's uses fixed-size buffers for response data, which means each resource file has to be small enough to fit. This appears to be 2 MiB, but the exact value doesn't seem to be documented anywhere, and there doesn't seem to be any way to read it programmatically. Worse yet, the buffer also stores the response head and headers, which are affected by other modules and configuration. SHAPOW limits each resource to 1.9 MiB, but you should check that the resources are being served properly if you're near that limit.
 
@@ -281,6 +280,6 @@ You can also improve memory efficiency by disabling the `shapow_whitelist_count`
 
 ## Similar projects
 - https://github.com/simon987/ngx_http_js_challenge_module
-	+ Similar idea to SHAPOW, but depends on cookies instead of a whitelist, rolls its own crypto, and does not allow difficulty adjustment (it seems hardcoded to 16).
+	+ Similar idea to SHAPOW, but depends on cookies instead of a whitelist, rolls its own crypto on the backend, and does not allow difficulty adjustment (it seems hardcoded to 16).
 - https://anubis.techaro.lol/
-	+ Much more actively developed, but also depends on cookies and runs as a separate daemon.
+	+ Much more actively developed, but also depends on cookies and XHR/fetch, and runs as a separate daemon.
