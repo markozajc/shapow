@@ -355,7 +355,12 @@ static ngx_int_t ngx_http_shapow_read_file_into(ngx_conf_t *cf, const ngx_str_t 
 	}
 
 	*size = ngx_file_size(&file.info);
-	if (*size > 1992294 /* 1.9 MiB */) {
+	if (*size == 0) {
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "Resource file \"%V\" is empty", name);
+		ngx_http_shapow_close_file_checked(cf, &file);
+		return NGX_ERROR;
+
+	} else if (*size > 1992294 /* 1.9 MiB */) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "Resource file \"%V\" is too large, the limit is 1.9 MiB", name);
 		ngx_http_shapow_close_file_checked(cf, &file);
 		return NGX_ERROR;

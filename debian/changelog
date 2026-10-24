@@ -1,3 +1,13 @@
+libnginx-mod-http-shapow (3.0) stable; urgency=medium
+
+  * Introduce variable support for the `shapow_difficulty` directive
+  * Significantly improve performance of the challenge solver script
+  * Increase the default difficulty to 18 (from 12)
+  * Fix various minor bugs and add more sanity checks to the configuration
+    parser
+
+ -- Marko Zajc <marko@zajc.tel>  Wed, 25 Oct 2026 00:01:40 +0200
+
 libnginx-mod-http-shapow (2.2) stable; urgency=medium
 
   * Remove the support e-mail address from the challenge page
