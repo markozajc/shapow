@@ -101,10 +101,16 @@ map $http_user_agent $shapow_enable { # permit some good bots (beware of User-Ag
     default       on;
 }
 
+map $http_user_agent $shapow_difficulty { # serve a higher difficulty challenge to probable badbots
+    "~Mozlila"    20;
+    "~Trident"    20;
+    default       18;
+}
+
 server {
     # ...
 
-    shapow_difficulty 20;
+    shapow_difficulty $shapow_difficulty;
     shapow_zone main;
 
     location / {
@@ -157,13 +163,15 @@ Context: http, server, location
 Sets the shared memory zone to be used, identified by *`name`*. This directive is mandatory if `shapow on` is set, and the zone must be created in the http context with `shapow_zone_add`.
 
 ### `shapow_difficulty`
-Syntax: <code><b>shapow_difficulty</b> <i>number</i></code>  
+Syntax: <code><b>shapow_difficulty</b> <i>difficulty</i></code>  
 Default: `shapow_difficulty 18`  
 Context: http, server, location
 
 Sets the challenge difficulty to be used, expressed as the *`number`* of leading bits that must be zero. Higher values means more computation required to solve the challenge, which in turn potentially means more bots deterred, but also longer wait times for users. Values in the 10-14 range are recommended, and you are encouraged to run the challenge a few times (especially on low-end or underpowered devices such as smartphones and laptops!) to see how it affects the wait time.
 
 Keep in mind that while the default challenge page provides a progress bar based on the iteration count, the challenge works more like a lottery; wait times tend to average out on some number, but there will be outliers.
+
+*`difficulty`* is either a non-negative integer, or a variable that resolves to such a value.
 
 ### `shapow_whitelist_count`
 Syntax: <code><b>shapow_whitelist_count</b> <i>number</i></code>  

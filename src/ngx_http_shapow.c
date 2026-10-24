@@ -155,8 +155,12 @@ typedef struct {
 	ngx_flag_t enabled_flag;
 	bool has_enabled_cv;
 	ngx_http_complex_value_t enabled_cv;
-	ngx_str_t zone_name;
+
 	ngx_uint_t difficulty;
+	bool has_difficulty_cv;
+	ngx_http_complex_value_t difficulty_cv;
+
+	ngx_str_t zone_name;
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	ngx_uint_t whitelist_count;
 #endif
@@ -194,6 +198,8 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 static ngx_int_t ngx_http_shapow_handler(ngx_http_request_t *r);
 
 static char* ngx_http_shapow_enable(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+static char* ngx_http_shapow_difficulty(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static char* ngx_http_shapow_zone_add(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
@@ -233,10 +239,10 @@ static ngx_command_t ngx_http_shapow_commands[] = {
 	{
 		ngx_string("shapow_difficulty"),
 		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-		ngx_conf_set_num_slot,
+		ngx_http_shapow_difficulty,
 		NGX_HTTP_LOC_CONF_OFFSET,
-		offsetof(ngx_http_shapow_loc_conf_t, difficulty),
-		NULL
+		0,
+		0
 	},
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	{
@@ -402,6 +408,33 @@ static void ngx_http_shapow_fill_hex(const u_char *data, u_char *out, size_t siz
 	}
 }
 
+static ngx_int_t ngx_http_shapow_get_difficulty(ngx_http_request_t *r, ngx_http_shapow_loc_conf_t *conf) {
+	if (conf->has_difficulty_cv) {
+		ngx_str_t res; // NOSONAR initialized right after
+		if (ngx_http_complex_value(r, &conf->difficulty_cv, &res) != NGX_OK)
+			return NGX_ERROR;
+
+		ngx_int_t difficulty_signed;
+		if ((difficulty_signed = ngx_atoi(res.data, res.len)) != NGX_ERROR) {
+			if (difficulty_signed < 0 || difficulty_signed > SHA256_DIGEST_LENGTH * 8) {
+				ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "SHAPOW: shapow_difficulty must be between 0 and %d",
+						(SHA256_DIGEST_LENGTH) * 8); // NOSONAR parens aren't redundant
+				return NGX_ERROR;
+			}
+
+			return difficulty_signed;
+
+		} else {
+			ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+					"SHAPOW: shapow_difficulty must be an integer, but was \"%V\"", &res);
+			return NGX_ERROR;
+		}
+
+	} else {
+		return conf->difficulty;
+	}
+}
+
 /* ===================================================
  * module setup functions
  =================================================== */
@@ -414,6 +447,8 @@ static void* ngx_http_shapow_create_loc_conf(ngx_conf_t *cf) {
 	 * set by pcalloc:
 	 *     conf->enabled_cv = { 0 };
 	 *     conf->has_enabled_cv = false;
+	 *     conf->difficulty_cv = { 0 };
+	 *     conf->has_difficulty_cv = false;
 	 *     conf->zone_name = { 0, NULL };
 	 *     conf->challenge_html_path = { 0, NULL };
 	 *     conf->challenge_css_path = { 0, NULL };
@@ -452,8 +487,18 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 		conf->enabled_flag = prev->enabled_flag;
 	}
 
+	if (!conf->has_difficulty_cv && conf->difficulty == NGX_CONF_UNSET_UINT) {
+		if (!prev->has_difficulty_cv && prev->difficulty == NGX_CONF_UNSET_UINT) {
+			conf->difficulty = 18;
+			conf->has_difficulty_cv = false;
+		} else {
+			conf->difficulty_cv = prev->difficulty_cv;
+			conf->has_difficulty_cv = prev->has_difficulty_cv;
+			conf->difficulty = prev->difficulty;
+		}
+	}
+
 	ngx_conf_merge_str_value(conf->zone_name, prev->zone_name, "")
-	ngx_conf_merge_uint_value(conf->difficulty, prev->difficulty, 18)
 #ifdef NGX_HTTP_SHAPOW_ENABLE_WHITELIST_COUNT
 	ngx_conf_merge_uint_value(conf->whitelist_count, prev->whitelist_count, 0)
 #endif
@@ -474,12 +519,6 @@ static char* ngx_http_shapow_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
 
 	if (conf->zone_name.len == 0) {
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow_zone directive is required when SHAPOW is enabled");
-		return NGX_CONF_ERROR ;
-	}
-
-	if (conf->difficulty > SHA256_DIGEST_LENGTH * 8) {
-		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow_difficulty must be between 0 and %d",
-				(SHA256_DIGEST_LENGTH) * 8); // NOSONAR parens aren't redundant
 		return NGX_CONF_ERROR ;
 	}
 
@@ -713,12 +752,50 @@ static char* ngx_http_shapow_enable(ngx_conf_t *cf, ngx_command_t *cmd, void *co
 			return NGX_CONF_ERROR ;
 
 		if (conf->enabled_cv.lengths == NULL) {
-			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow value should be \"on\" or \"off\", but was \"%V\"",
+			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow value must be \"on\" or \"off\", but was \"%V\"",
 					&value[1]);
 			return NGX_CONF_ERROR ;
 		}
 
 		conf->has_enabled_cv = true;
+	}
+
+	return NGX_CONF_OK;
+}
+
+static char* ngx_http_shapow_difficulty(ngx_conf_t *cf, ngx_command_t *cmd, void *conf_raw) { // NOSONAR can't make it const
+	(void) (cmd); // unused
+
+	ngx_http_shapow_loc_conf_t *conf = conf_raw;
+
+	ngx_int_t difficulty;
+	ngx_str_t *value = cf->args->elts;
+	if ((difficulty = ngx_atoi(value[1].data, value[1].len)) != NGX_ERROR) {
+		if (difficulty < 0 || difficulty > SHA256_DIGEST_LENGTH * 8) {
+			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow_difficulty must be between 0 and %d",
+					(SHA256_DIGEST_LENGTH) * 8); // NOSONAR parens aren't redundant
+			return NGX_CONF_ERROR ;
+		}
+
+		conf->difficulty = (ngx_uint_t) difficulty;
+		conf->has_difficulty_cv = false;
+
+	} else {
+		ngx_http_compile_complex_value_t ccv = {0};
+		ccv.cf = cf;
+		ccv.value = &value[1];
+		ccv.complex_value = &conf->difficulty_cv;
+
+		if (ngx_http_compile_complex_value(&ccv) != NGX_OK)
+			return NGX_CONF_ERROR ;
+
+		if (conf->enabled_cv.lengths == NULL) {
+			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "shapow_difficulty must be an integer, but was \"%V\" %i",
+					&value[1], difficulty);
+			return NGX_CONF_ERROR ;
+		}
+
+		conf->has_difficulty_cv = true;
 	}
 
 	return NGX_CONF_OK;
@@ -780,7 +857,7 @@ static ngx_int_t ngx_http_shapow_serve_buffer(ngx_http_request_t *r, u_char *buf
 	ngx_buf_t *ngx_buf = ngx_calloc_buf(r->pool);
 	if (ngx_buf == NULL) {
 		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_buf_t");
-		return NGX_ERROR;
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
 	ngx_buf->pos = buf;
@@ -791,7 +868,7 @@ static ngx_int_t ngx_http_shapow_serve_buffer(ngx_http_request_t *r, u_char *buf
 	ngx_chain_t *chain_link = ngx_alloc_chain_link(r->pool);
 	if (chain_link == NULL) {
 		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "SHAPOW: out of memory when allocating a ngx_chain_t");
-		return NGX_ERROR;
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
 	chain_link->buf = ngx_buf;
@@ -802,7 +879,7 @@ static ngx_int_t ngx_http_shapow_serve_buffer(ngx_http_request_t *r, u_char *buf
 }
 
 static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r, const ngx_http_shapow_ctx_t *ctx,
-														  const ngx_http_shapow_loc_conf_t *conf) {
+														  ngx_http_shapow_loc_conf_t *conf) {
 	const struct sockaddr *sa = r->connection->sockaddr;
 	u_char addr[sizeof(struct in6_addr) * 2 /* hex */]; // NOSONAR initialized right after
 	ngx_str_t addr_str = {sizeof(addr), addr};
@@ -824,20 +901,24 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 	if (buf == NULL) {
 		ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
 				"SHAPOW: out of memory when allocating a challenge settings buffer");
-		return NGX_ERROR;
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
 	ngx_shmtx_lock(&ctx->shpool->mutex);
 	uint64_t random_challenge = ctx->sh->random_challenge;
 	ngx_shmtx_unlock(&ctx->shpool->mutex);
 
+	ngx_int_t difficulty = ngx_http_shapow_get_difficulty(r, conf);
+	if (difficulty == NGX_ERROR)
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
+
 	const u_char *end = ngx_snprintf(buf, NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN,
-			(NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT), conf->difficulty, &addr_str, (int64_t) ngx_time(), // NOSONAR cast isn't redundant
+			(NGX_HTTP_SHAPOW_CHALL_SETTINGS_FORMAT), (ngx_uint_t) difficulty, &addr_str, (int64_t) ngx_time(), // NOSONAR parentheses aren't redundant
 			random_challenge);
 
 	if (end >= buf + NGX_HTTP_SHAPOW_CHALLENGE_SETTINGS_BUF_LEN) {
 		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "SHAPOW: challenge settings buffer is too small");
-		return NGX_ERROR;
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
 	ngx_table_elt_t *cc;
@@ -848,7 +929,7 @@ static ngx_int_t ngx_http_shapow_serve_challenge_settings(ngx_http_request_t *r,
 		if (cc == NULL) {
 			ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
 					"SHAPOW: out of memory when allocating the Cache-Control header");
-			return NGX_ERROR;
+			return NGX_HTTP_INTERNAL_SERVER_ERROR;
 		}
 
 		r->headers_out.cache_control = cc;
@@ -913,8 +994,8 @@ static bool ngx_http_shapow_check_response_difficulty(const u_char *challenge_re
 	return (0xFF << (8 - difficulty) & 0xFF & hash[i]) == 0;
 }
 
-static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r, const ngx_http_shapow_ctx_t *ctx,
-													 const ngx_http_shapow_loc_conf_t *conf, const u_char *response) {
+static ngx_int_t ngx_http_shapow_check_challenge_response(ngx_http_request_t *r, const ngx_http_shapow_ctx_t *ctx,
+														  ngx_http_shapow_loc_conf_t *conf, const u_char *response) {
 	// parse hex response to binary
 	u_char data[NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH] = {0};
 	for (size_t i = 0; i < NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_LENGTH * 2; ++i) {
@@ -979,7 +1060,11 @@ static bool ngx_http_shapow_check_challenge_response(const ngx_http_request_t *r
 		return false;
 
 	// check difficulty
-	if (!ngx_http_shapow_check_response_difficulty(data, conf->difficulty))
+	ngx_int_t difficulty = ngx_http_shapow_get_difficulty(r, conf);
+	if (difficulty == NGX_ERROR)
+		return NGX_ERROR;
+
+	if (!ngx_http_shapow_check_response_difficulty(data, difficulty))
 		return false;
 
 	return 1;
@@ -1132,7 +1217,7 @@ static bool ngx_http_shapow_addr_family_supported(sa_family_t sa_family) {
 	return false;
 }
 
-static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, const ngx_http_shapow_loc_conf_t *conf,
+static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, ngx_http_shapow_loc_conf_t *conf,
 														ngx_http_shapow_ctx_t *ctx) {
 	const struct sockaddr *sa = r->connection->sockaddr;
 
@@ -1143,11 +1228,14 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 	// check if response has a valid challenge response
 	const u_char *challenge_response = ngx_http_shapow_find_challenge_response(&r->args);
 	if (challenge_response) {
-		if (!ngx_http_shapow_check_challenge_response(r, ctx, conf, challenge_response))
+		ngx_int_t check = ngx_http_shapow_check_challenge_response(r, ctx, conf, challenge_response);
+		if (check == NGX_ERROR)
+			return NGX_HTTP_INTERNAL_SERVER_ERROR;
+		else if (!check)
 			return NGX_OK;
 
 		if (ngx_http_shapow_upsert_address(r, conf, ctx, sa) == NGX_ERROR)
-			return NGX_ERROR;
+			return NGX_HTTP_INTERNAL_SERVER_ERROR;
 
 		// remove challenge_response from the URL so it's not read by other modules/directives
 		const u_char *resp_arg_start = challenge_response - sizeof(NGX_HTTP_SHAPOW_CHALLENGE_RESPONSE_ARG);
@@ -1171,7 +1259,7 @@ static ngx_int_t ngx_http_shapow_should_serve_challenge(ngx_http_request_t *r, c
 			if (args == NULL) {
 				ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
 						"SHAPOW: out of memory when allocating a new args buffer");
-				return NGX_ERROR;
+				return NGX_HTTP_INTERNAL_SERVER_ERROR;
 			}
 
 			ngx_memcpy(args, r->args.data, leading_len);
@@ -1225,7 +1313,7 @@ static ngx_int_t ngx_http_shapow_handler(ngx_http_request_t *r) { // NOSONAR
 	ngx_http_shapow_loc_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_shapow_module);
 	bool enabled; // NOSONAR initialized right after
 	if (conf->has_enabled_cv) {
-		ngx_str_t res; // NOSONAR initialized right afters
+		ngx_str_t res; // NOSONAR initialized right after
 		if (ngx_http_complex_value(r, &conf->enabled_cv, &res) != NGX_OK)
 			return NGX_HTTP_INTERNAL_SERVER_ERROR;
 
